@@ -456,22 +456,73 @@ export async function registerRoutes(
       );
 
       const certificates = await storage.getCertificatesByUserId(user.id);
+      const projects = await storage.getProjectsByUserId(user.id);
       const approvedCerts = certificates.filter(c => c.status === "approved");
       const viewCount = await storage.getPortfolioViewCount(user.id);
+
+      // Organize certificates by type
+      const skills = approvedCerts
+        .filter(c => c.certificateType === "course")
+        .map(c => ({
+          id: c.id,
+          title: c.title,
+          institution: c.institution,
+          blockchainHash: c.blockchainHash,
+          qrCode: c.qrCode,
+          createdAt: c.createdAt,
+        }));
+
+      const internships = approvedCerts
+        .filter(c => c.certificateType === "internship")
+        .map(c => ({
+          id: c.id,
+          title: c.title,
+          institution: c.institution,
+          duration: c.internshipDuration,
+          blockchainHash: c.blockchainHash,
+          qrCode: c.qrCode,
+          createdAt: c.createdAt,
+        }));
+
+      const hackathons = approvedCerts
+        .filter(c => c.certificateType === "hackathon")
+        .map(c => ({
+          id: c.id,
+          title: c.title,
+          institution: c.institution,
+          blockchainHash: c.blockchainHash,
+          qrCode: c.qrCode,
+          createdAt: c.createdAt,
+        }));
+
+      const workshops = approvedCerts
+        .filter(c => c.certificateType === "workshop")
+        .map(c => ({
+          id: c.id,
+          title: c.title,
+          institution: c.institution,
+          blockchainHash: c.blockchainHash,
+          qrCode: c.qrCode,
+          createdAt: c.createdAt,
+        }));
 
       const { password: _, ...userWithoutPassword } = user;
 
       res.json({
         user: userWithoutPassword,
-        certificates: approvedCerts.map(c => ({
-          id: c.id,
-          title: c.title,
-          institution: c.institution,
-          status: c.status,
-          blockchainHash: c.blockchainHash,
-          qrCode: c.qrCode,
-          createdAt: c.createdAt,
-        })),
+        portfolio: {
+          skills,
+          internships,
+          hackathons,
+          workshops,
+          projects: projects.map(p => ({
+            id: p.id,
+            title: p.title,
+            description: p.description,
+            githubLink: p.githubLink,
+            createdAt: p.createdAt,
+          })),
+        },
         viewCount,
       });
     } catch (error) {

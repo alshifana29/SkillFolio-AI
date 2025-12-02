@@ -17,7 +17,8 @@ import {
   ExternalLink,
   Shield,
   Tag as CertIcon,
-  Eye
+  Eye,
+  Briefcase
 } from "lucide-react";
 
 interface PortfolioData {
@@ -29,16 +30,13 @@ interface PortfolioData {
     role: string;
     profileImageUrl?: string;
   };
-  certificates: Array<{
-    id: string;
-    title: string;
-    institution: string;
-    description?: string;
-    status: string;
-    blockchainHash?: string;
-    qrCode?: string;
-    createdAt: string;
-  }>;
+  portfolio: {
+    skills: Array<{ id: string; title: string; institution: string; blockchainHash?: string; qrCode?: string; createdAt: string }>;
+    internships: Array<{ id: string; title: string; institution: string; duration?: string; blockchainHash?: string; qrCode?: string; createdAt: string }>;
+    hackathons: Array<{ id: string; title: string; institution: string; blockchainHash?: string; qrCode?: string; createdAt: string }>;
+    workshops: Array<{ id: string; title: string; institution: string; blockchainHash?: string; qrCode?: string; createdAt: string }>;
+    projects: Array<{ id: string; title: string; description: string; githubLink: string; createdAt: string }>;
+  };
   viewCount: number;
 }
 
@@ -137,7 +135,7 @@ export default function Portfolio() {
               </div>
               <div className="flex items-center space-x-2">
                 <CertIcon className="text-primary" />
-                <span>{portfolio.certificates.length} Verified Certificates</span>
+                <span>{portfolio.skills.length + portfolio.internships.length + portfolio.hackathons.length + portfolio.workshops.length} Verified Credentials</span>
               </div>
               <div className="flex items-center space-x-2">
                 <Shield className="text-green-600" />
@@ -163,106 +161,123 @@ export default function Portfolio() {
           </CardContent>
         </Card>
 
-        {/* Verified Certificates */}
-        <Card className="mb-8">
-          <CardContent className="p-6">
-            <h2 className="text-xl font-bold text-foreground mb-6">Verified Certificates</h2>
-            
-            {portfolio.certificates.length === 0 ? (
-              <div className="text-center py-8">
-                <CertIcon className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">No verified certificates yet</p>
+        {/* Skills Section (from Course Certificates) */}
+        {portfolio.portfolio && portfolio.portfolio.skills && portfolio.portfolio.skills.length > 0 && (
+          <Card className="mb-8">
+            <CardContent className="p-6">
+              <h2 className="text-xl font-bold text-foreground mb-6">Skills & Courses</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {portfolio.portfolio.skills.map((skill) => (
+                  <div key={skill.id} className="border rounded-lg p-4 bg-muted/30">
+                    <h3 className="font-semibold text-foreground">{skill.title}</h3>
+                    <p className="text-sm text-muted-foreground">{skill.institution}</p>
+                    <p className="text-xs text-muted-foreground mt-2">Verified: {new Date(skill.createdAt).toLocaleDateString()}</p>
+                  </div>
+                ))}
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {portfolio.certificates.map((certificate) => {
-                  const Icon = getCertificateIcon(certificate.title);
-                  
-                  return (
-                    <div 
-                      key={certificate.id}
-                      className="border border-border rounded-lg p-4 hover:shadow-md transition-shadow"
-                      data-testid={`certificate-${certificate.id}`}
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                            <Icon className="text-blue-600" />
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-foreground">{certificate.title}</h3>
-                            <p className="text-sm text-muted-foreground">{certificate.institution}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Badge className="bg-green-100 text-green-800">Verified</Badge>
-                          {certificate.qrCode && (
-                            <QRCodeDisplay 
-                              qrCodeData={certificate.qrCode} 
-                              title={certificate.title}
-                            />
-                          )}
-                        </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Work Experience Section (from Internships) */}
+        {portfolio.portfolio && portfolio.portfolio.internships && portfolio.portfolio.internships.length > 0 && (
+          <Card className="mb-8">
+            <CardContent className="p-6">
+              <h2 className="text-xl font-bold text-foreground mb-6 flex items-center gap-2">
+                <Briefcase className="h-5 w-5" />
+                Work Experience
+              </h2>
+              <div className="space-y-4">
+                {portfolio.portfolio.internships.map((internship) => (
+                  <div key={internship.id} className="border rounded-lg p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h3 className="font-semibold text-foreground">{internship.title}</h3>
+                        <p className="text-sm text-muted-foreground">{internship.institution}</p>
                       </div>
-                      
-                      {certificate.description && (
-                        <div className="bg-muted/30 rounded-lg p-3 mb-3">
-                          <p className="text-sm text-foreground">{certificate.description}</p>
-                        </div>
-                      )}
-                      
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs text-muted-foreground">
-                          Issued: {new Date(certificate.createdAt).toLocaleDateString()}
-                        </p>
-                        {certificate.blockchainHash && (
-                          <Button 
-                            variant="link" 
-                            size="sm" 
-                            className="text-primary hover:underline"
-                            data-testid={`verify-certificate-${certificate.id}`}
-                          >
-                            Verify on Blockchain
-                          </Button>
-                        )}
-                      </div>
-                      
-                      {certificate.blockchainHash && (
-                        <div className="mt-3 pt-3 border-t border-border">
-                          <p className="text-xs text-muted-foreground">
-                            Blockchain Hash: {certificate.blockchainHash.substring(0, 10)}...
-                          </p>
-                        </div>
-                      )}
+                      <Badge className="bg-green-100 text-green-800">Verified</Badge>
                     </div>
-                  );
-                })}
+                    {internship.duration && <p className="text-sm text-muted-foreground">Duration: {internship.duration}</p>}
+                    <p className="text-xs text-muted-foreground mt-2">Verified: {new Date(internship.createdAt).toLocaleDateString()}</p>
+                  </div>
+                ))}
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Projects Section */}
+        {portfolio.portfolio && portfolio.portfolio.projects && portfolio.portfolio.projects.length > 0 && (
+          <Card className="mb-8">
+            <CardContent className="p-6">
+              <h2 className="text-xl font-bold text-foreground mb-6 flex items-center gap-2">
+                <Code className="h-5 w-5" />
+                Projects
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {portfolio.portfolio.projects.map((project) => (
+                  <div key={project.id} className="border rounded-lg p-4">
+                    <h3 className="font-semibold text-foreground mb-2">{project.title}</h3>
+                    <p className="text-sm text-muted-foreground mb-3">{project.description}</p>
+                    <a href={project.githubLink} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-sm flex items-center gap-1">
+                      <Github className="h-4 w-4" />
+                      View on GitHub
+                    </a>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Hackathons & Workshops */}
+        {portfolio.portfolio && (portfolio.portfolio.hackathons.length > 0 || portfolio.portfolio.workshops.length > 0) && (
+          <Card className="mb-8">
+            <CardContent className="p-6">
+              <h2 className="text-xl font-bold text-foreground mb-6">Achievements</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {portfolio.portfolio.hackathons.map((h) => (
+                  <div key={h.id} className="border rounded-lg p-4 bg-amber-50">
+                    <Badge className="mb-2 bg-amber-200 text-amber-900">Hackathon</Badge>
+                    <h3 className="font-semibold text-foreground">{h.title}</h3>
+                    <p className="text-sm text-muted-foreground">{h.institution}</p>
+                  </div>
+                ))}
+                {portfolio.portfolio.workshops.map((w) => (
+                  <div key={w.id} className="border rounded-lg p-4 bg-purple-50">
+                    <Badge className="mb-2 bg-purple-200 text-purple-900">Workshop</Badge>
+                    <h3 className="font-semibold text-foreground">{w.title}</h3>
+                    <p className="text-sm text-muted-foreground">{w.institution}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Skills & Contact */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Skills */}
+          {/* Stats */}
           <Card>
             <CardContent className="p-6">
-              <h2 className="text-xl font-bold text-foreground mb-4">Skills & Expertise</h2>
+              <h2 className="text-xl font-bold text-foreground mb-4">Portfolio Stats</h2>
               <div className="space-y-3">
-                {/* Skills would be derived from certificates or user profile */}
-                <div className="flex flex-wrap gap-2">
-                  {portfolio.certificates.map((cert) => (
-                    <Badge key={cert.id} variant="outline" className="text-sm">
-                      {cert.title.split(' ').slice(0, 2).join(' ')}
-                    </Badge>
-                  ))}
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Skills</span>
+                  <span className="font-bold text-foreground">{portfolio.portfolio?.skills.length || 0}</span>
                 </div>
-                
-                {portfolio.certificates.length === 0 && (
-                  <p className="text-muted-foreground text-sm">
-                    Skills will be displayed based on verified certificates
-                  </p>
-                )}
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Work Experience</span>
+                  <span className="font-bold text-foreground">{portfolio.portfolio?.internships.length || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Projects</span>
+                  <span className="font-bold text-foreground">{portfolio.portfolio?.projects.length || 0}</span>
+                </div>
+                <div className="flex justify-between pt-3 border-t">
+                  <span className="text-muted-foreground">Total Credentials</span>
+                  <span className="font-bold text-primary">{(portfolio.portfolio?.skills.length || 0) + (portfolio.portfolio?.internships.length || 0) + (portfolio.portfolio?.hackathons.length || 0) + (portfolio.portfolio?.workshops.length || 0)}</span>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -297,8 +312,8 @@ export default function Portfolio() {
                     <p className="text-sm text-muted-foreground">Profile Views</p>
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-green-600">{portfolio.certificates.length}</p>
-                    <p className="text-sm text-muted-foreground">Verified Certs</p>
+                    <p className="text-2xl font-bold text-green-600">{portfolio.skills.length + portfolio.internships.length + portfolio.hackathons.length + portfolio.workshops.length}</p>
+                    <p className="text-sm text-muted-foreground">Verified Creds</p>
                   </div>
                 </div>
               </div>
