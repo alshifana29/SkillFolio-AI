@@ -15,7 +15,7 @@ import { FileUpload } from "@/components/ui/file-upload";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { CertificateCard } from "@/components/dashboard/certificate-card";
 import { getAuthHeaders } from "@/lib/auth";
-import { insertCertificateSchema, type InsertCertificate, type Certificate } from "@shared/schema";
+import { insertCertificateSchema, insertProjectSchema, type InsertCertificate, type Certificate, type Project, type InsertProject } from "@shared/schema";
 import * as QRCode from "qrcode";
 import { 
   GraduationCap, 
@@ -30,7 +30,12 @@ import {
   LogOut,
   User,
   Copy,
-  Check
+  Check,
+  Github,
+  Plus,
+  Edit2,
+  Trash2,
+  ExternalLink
 } from "lucide-react";
 
 let pdfMakeLoaded = false;
@@ -60,6 +65,8 @@ export default function StudentDashboard() {
   const [qrCode, setQrCode] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const [certificateType, setCertificateType] = useState<string>("course");
+  const [showProjectModal, setShowProjectModal] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
 
   const {
     register,
@@ -70,6 +77,16 @@ export default function StudentDashboard() {
     resolver: zodResolver(insertCertificateSchema),
   });
 
+  const {
+    register: registerProject,
+    handleSubmit: handleSubmitProject,
+    reset: resetProject,
+    formState: { errors: projectErrors },
+  } = useForm<InsertProject>({
+    resolver: zodResolver(insertProjectSchema),
+    values: editingProject ? { title: editingProject.title, description: editingProject.description, githubLink: editingProject.githubLink } : undefined,
+  });
+
   // Fetch user's certificates
   const { data: certificates = [], isLoading: certificatesLoading } = useQuery({
     queryKey: ["/api/certificates"],
@@ -78,6 +95,18 @@ export default function StudentDashboard() {
         headers: getAuthHeaders(),
       });
       if (!response.ok) throw new Error("Failed to fetch certificates");
+      return response.json();
+    },
+  });
+
+  // Fetch user's projects
+  const { data: projects = [], isLoading: projectsLoading } = useQuery({
+    queryKey: ["/api/projects"],
+    queryFn: async () => {
+      const response = await fetch("/api/projects", {
+        headers: getAuthHeaders(),
+      });
+      if (!response.ok) throw new Error("Failed to fetch projects");
       return response.json();
     },
   });
@@ -126,6 +155,78 @@ export default function StudentDashboard() {
       toast({
         title: "Upload failed",
         description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Create/Update project mutation
+  const projectMutation = useMutation({
+    mutationFn: async (data: InsertProject) => {
+      const token = localStorage.getItem("auth_token");
+      const url = editingProject ? `/api/projects/${editingProject.id}` : "/api/projects";
+      const method = editingProject ? "PUT" : "POST";
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to save project");
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: editingProject ? "Project updated" : "Project created",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      resetProject();
+      setShowProjectModal(false);
+      setEditingProject(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save project",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete project mutation
+  const deleteProjectMutation = useMutation({
+    mutationFn: async (projectId: string) => {
+      const token = localStorage.getItem("auth_token");
+      const response = await fetch(`/api/projects/${projectId}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) throw new Error("Failed to delete project");
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Project deleted",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete project",
         variant: "destructive",
       });
     },
@@ -596,6 +697,59 @@ export default function StudentDashboard() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Projects Section */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Projects</CardTitle>
+                <Button size="sm" onClick={() => { setEditingProject(null); setShowProjectModal(true); }} data-testid="add-project-button">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Project
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {projectsLoading ? (
+                  <div className="space-y-3">
+                    {[1, 2].map((i) => (
+                      <div key={i} className="animate-pulse">
+                        <div className="h-20 bg-muted rounded-lg"></div>
+                      </div>
+                    ))}
+                  </div>
+                ) : projects.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Github className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">No projects yet</p>
+                    <p className="text-sm text-muted-foreground">Add your projects to showcase your work</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {projects.map((project: Project) => (
+                      <div key={project.id} className="border rounded-lg p-4 hover:bg-muted/50 transition" data-testid={`project-card-${project.id}`}>
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-foreground">{project.title}</h4>
+                            <p className="text-sm text-muted-foreground mt-1">{project.description}</p>
+                            <a href={project.githubLink} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline mt-2 flex items-center gap-1 w-fit">
+                              <ExternalLink className="h-3 w-3" />
+                              View on GitHub
+                            </a>
+                          </div>
+                          <div className="flex gap-2 ml-4">
+                            <Button size="sm" variant="ghost" onClick={() => { setEditingProject(project); setShowProjectModal(true); }} data-testid={`edit-project-${project.id}`}>
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => deleteProjectMutation.mutate(project.id)} data-testid={`delete-project-${project.id}`}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
 
           {/* Portfolio & Actions */}
@@ -761,6 +915,59 @@ export default function StudentDashboard() {
               </div>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add/Edit Project Modal */}
+      <Dialog open={showProjectModal} onOpenChange={setShowProjectModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingProject ? "Edit Project" : "Add New Project"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmitProject((data) => projectMutation.mutate(data))} className="space-y-4">
+            <div>
+              <Label htmlFor="title">Project Title</Label>
+              <Input
+                id="title"
+                placeholder="e.g., E-commerce Platform"
+                {...registerProject("title")}
+                data-testid="project-title-input"
+              />
+              {projectErrors.title && (
+                <p className="text-sm text-destructive mt-1">{projectErrors.title.message}</p>
+              )}
+            </div>
+            
+            <div>
+              <Label htmlFor="description">Description</Label>
+              <Input
+                id="description"
+                placeholder="Brief description of the project"
+                {...registerProject("description")}
+                data-testid="project-description-input"
+              />
+              {projectErrors.description && (
+                <p className="text-sm text-destructive mt-1">{projectErrors.description.message}</p>
+              )}
+            </div>
+            
+            <div>
+              <Label htmlFor="githubLink">GitHub Link</Label>
+              <Input
+                id="githubLink"
+                placeholder="https://github.com/username/project"
+                {...registerProject("githubLink")}
+                data-testid="project-github-input"
+              />
+              {projectErrors.githubLink && (
+                <p className="text-sm text-destructive mt-1">{projectErrors.githubLink.message}</p>
+              )}
+            </div>
+
+            <Button type="submit" className="w-full" data-testid="save-project-button">
+              {editingProject ? "Update Project" : "Add Project"}
+            </Button>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
