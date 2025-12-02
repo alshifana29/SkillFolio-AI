@@ -102,6 +102,10 @@ export default function Portfolio() {
     );
   }
 
+  // Safe data access
+  const portfolioData = portfolio?.portfolio || { skills: [], internships: [], hackathons: [], workshops: [], projects: [] };
+  const totalCredentials = (portfolioData.skills?.length || 0) + (portfolioData.internships?.length || 0) + (portfolioData.hackathons?.length || 0) + (portfolioData.workshops?.length || 0);
+
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -135,7 +139,7 @@ export default function Portfolio() {
               </div>
               <div className="flex items-center space-x-2">
                 <CertIcon className="text-primary" />
-                <span>{(portfolio.portfolio?.skills.length || 0) + (portfolio.portfolio?.internships.length || 0) + (portfolio.portfolio?.hackathons.length || 0) + (portfolio.portfolio?.workshops.length || 0)} Verified Credentials</span>
+                <span>{totalCredentials} Verified Credentials</span>
               </div>
               <div className="flex items-center space-x-2">
                 <Shield className="text-green-600" />
@@ -162,12 +166,12 @@ export default function Portfolio() {
         </Card>
 
         {/* Skills Section (from Course Certificates) */}
-        {portfolio.portfolio && portfolio.portfolio.skills && portfolio.portfolio.skills.length > 0 && (
+        {portfolioData.skills && portfolioData.skills.length > 0 && (
           <Card className="mb-8">
             <CardContent className="p-6">
               <h2 className="text-xl font-bold text-foreground mb-6">Skills & Courses</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {portfolio.portfolio.skills.map((skill) => (
+                {portfolioData.skills.map((skill) => (
                   <div key={skill.id} className="border rounded-lg p-4 bg-muted/30">
                     <h3 className="font-semibold text-foreground">{skill.title}</h3>
                     <p className="text-sm text-muted-foreground">{skill.institution}</p>
@@ -180,7 +184,7 @@ export default function Portfolio() {
         )}
 
         {/* Work Experience Section (from Internships) */}
-        {portfolio.portfolio && portfolio.portfolio.internships && portfolio.portfolio.internships.length > 0 && (
+        {portfolioData.internships && portfolioData.internships.length > 0 && (
           <Card className="mb-8">
             <CardContent className="p-6">
               <h2 className="text-xl font-bold text-foreground mb-6 flex items-center gap-2">
@@ -188,7 +192,7 @@ export default function Portfolio() {
                 Work Experience
               </h2>
               <div className="space-y-4">
-                {portfolio.portfolio.internships.map((internship) => (
+                {portfolioData.internships.map((internship) => (
                   <div key={internship.id} className="border rounded-lg p-4">
                     <div className="flex justify-between items-start mb-2">
                       <div>
@@ -207,7 +211,7 @@ export default function Portfolio() {
         )}
 
         {/* Projects Section */}
-        {portfolio.portfolio && portfolio.portfolio.projects && portfolio.portfolio.projects.length > 0 && (
+        {portfolioData.projects && portfolioData.projects.length > 0 && (
           <Card className="mb-8">
             <CardContent className="p-6">
               <h2 className="text-xl font-bold text-foreground mb-6 flex items-center gap-2">
@@ -215,7 +219,7 @@ export default function Portfolio() {
                 Projects
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {portfolio.portfolio.projects.map((project) => (
+                {portfolioData.projects.map((project) => (
                   <div key={project.id} className="border rounded-lg p-4">
                     <h3 className="font-semibold text-foreground mb-2">{project.title}</h3>
                     <p className="text-sm text-muted-foreground mb-3">{project.description}</p>
@@ -231,19 +235,19 @@ export default function Portfolio() {
         )}
 
         {/* Hackathons & Workshops */}
-        {portfolio.portfolio && (portfolio.portfolio.hackathons.length > 0 || portfolio.portfolio.workshops.length > 0) && (
+        {(portfolioData.hackathons?.length || 0) > 0 || (portfolioData.workshops?.length || 0) > 0 ? (
           <Card className="mb-8">
             <CardContent className="p-6">
               <h2 className="text-xl font-bold text-foreground mb-6">Achievements</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {portfolio.portfolio.hackathons.map((h) => (
+                {portfolioData.hackathons?.map((h) => (
                   <div key={h.id} className="border rounded-lg p-4 bg-amber-50">
                     <Badge className="mb-2 bg-amber-200 text-amber-900">Hackathon</Badge>
                     <h3 className="font-semibold text-foreground">{h.title}</h3>
                     <p className="text-sm text-muted-foreground">{h.institution}</p>
                   </div>
                 ))}
-                {portfolio.portfolio.workshops.map((w) => (
+                {portfolioData.workshops?.map((w) => (
                   <div key={w.id} className="border rounded-lg p-4 bg-purple-50">
                     <Badge className="mb-2 bg-purple-200 text-purple-900">Workshop</Badge>
                     <h3 className="font-semibold text-foreground">{w.title}</h3>
@@ -253,7 +257,7 @@ export default function Portfolio() {
               </div>
             </CardContent>
           </Card>
-        )}
+        ) : null}
 
         {/* Skills & Contact */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -264,19 +268,19 @@ export default function Portfolio() {
               <div className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Skills</span>
-                  <span className="font-bold text-foreground">{portfolio.portfolio?.skills.length || 0}</span>
+                  <span className="font-bold text-foreground">{portfolioData.skills?.length || 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Work Experience</span>
-                  <span className="font-bold text-foreground">{portfolio.portfolio?.internships.length || 0}</span>
+                  <span className="font-bold text-foreground">{portfolioData.internships?.length || 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Projects</span>
-                  <span className="font-bold text-foreground">{portfolio.portfolio?.projects.length || 0}</span>
+                  <span className="font-bold text-foreground">{portfolioData.projects?.length || 0}</span>
                 </div>
                 <div className="flex justify-between pt-3 border-t">
                   <span className="text-muted-foreground">Total Credentials</span>
-                  <span className="font-bold text-primary">{(portfolio.portfolio?.skills.length || 0) + (portfolio.portfolio?.internships.length || 0) + (portfolio.portfolio?.hackathons.length || 0) + (portfolio.portfolio?.workshops.length || 0)}</span>
+                  <span className="font-bold text-primary">{totalCredentials}</span>
                 </div>
               </div>
             </CardContent>
@@ -312,7 +316,7 @@ export default function Portfolio() {
                     <p className="text-sm text-muted-foreground">Profile Views</p>
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-green-600">{portfolio.skills.length + portfolio.internships.length + portfolio.hackathons.length + portfolio.workshops.length}</p>
+                    <p className="text-2xl font-bold text-green-600">{totalCredentials}</p>
                     <p className="text-sm text-muted-foreground">Verified Creds</p>
                   </div>
                 </div>
