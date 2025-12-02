@@ -9,7 +9,7 @@ import fs from "fs";
 import { storage } from "./storage";
 import { blockchain } from "./blockchain";
 import { forgeryDetector } from "./ai";
-import { insertUserSchema, insertCertificateSchema, loginSchema } from "@shared/schema";
+import { insertUserSchema, insertCertificateSchema, loginSchema, insertProjectSchema } from "@shared/schema";
 import { z } from "zod";
 
 const JWT_SECRET = process.env.JWT_SECRET || "academicfoliochain-secret-key-2024";
@@ -599,6 +599,93 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Get candidates error:", error);
       res.status(500).json({ error: "Failed to get candidates" });
+    }
+  });
+
+  // Projects endpoints
+  app.post("/api/projects", authenticateToken, async (req: AuthRequest, res: Response) => {
+    try {
+      const projectData = insertProjectSchema.parse(req.body);
+      const project = await storage.createProject({
+        ...projectData,
+        userId: req.user!.id,
+      });
+      await storage.logActivity(req.user!.id, "project_created", "project", project.id);
+      res.status(201).json(project);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Create project error:", error);
+      res.status(500).json({ error: "Failed to create project" });
+    }
+  });
+
+  app.get("/api/projects", authenticateToken, async (req: AuthRequest, res: Response) => {
+    try {
+      const projects = await storage.getProjectsByUserId(req.user!.id);
+      res.json(projects);
+    } catch (error) {
+      console.error("Get projects error:", error);
+      res.status(500).json({ error: "Failed to get projects" });
+    }
+  });
+
+  app.get("/api/projects/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
+    try {
+      const project = await storage.getProjectById(req.params.id);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      if (project.userId !== req.user!.id) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+      res.json(project);
+    } catch (error) {
+      console.error("Get project error:", error);
+      res.status(500).json({ error: "Failed to get project" });
+    }
+  });
+
+  app.put("/api/projects/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
+    try {
+      const project = await storage.getProjectById(req.params.id);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      if (project.userId !== req.user!.id) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      const projectData = insertProjectSchema.partial().parse(req.body);
+      const updated = await storage.updateProject(req.params.id, projectData);
+      await storage.logActivity(req.user!.id, "project_updated", "project", req.params.id);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Update project error:", error);
+      res.status(500).json({ error: "Failed to update project" });
+    }
+  });
+
+  app.delete("/api/projects/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
+    try {
+      const project = await storage.getProjectById(req.params.id);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      if (project.userId !== req.user!.id) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      await storage.deleteProject(req.params.id);
+      await storage.logActivity(req.user!.id, "project_deleted", "project", req.params.id);
+      res.json({ message: "Project deleted" });
+    } catch (error) {
+      console.error("Delete project error:", error);
+      res.status(500).json({ error: "Failed to delete project" });
     }
   });
 
