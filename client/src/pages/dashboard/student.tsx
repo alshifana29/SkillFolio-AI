@@ -32,6 +32,22 @@ import {
   Check
 } from "lucide-react";
 
+let pdfMakeLoaded = false;
+let pdfMake: any = null;
+
+const initPdfMake = async () => {
+  if (pdfMakeLoaded) return;
+  try {
+    const pdfMakeModule = await import("pdfmake/build/pdfmake");
+    const pdfFontsModule = await import("pdfmake/build/vfs_fonts");
+    pdfMake = pdfMakeModule.default;
+    pdfMake.vfs = pdfFontsModule.default;
+    pdfMakeLoaded = true;
+  } catch (err) {
+    console.error("Failed to load pdfMake:", err);
+  }
+};
+
 export default function StudentDashboard() {
   const { user, logout } = useAuth();
   const { toast } = useToast();
@@ -136,25 +152,220 @@ export default function StudentDashboard() {
 
   const downloadPortfolio = async () => {
     try {
+      await initPdfMake();
+      
       const response = await fetch(`/api/portfolio/${user?.id}`, {
         headers: getAuthHeaders(),
       });
       if (!response.ok) throw new Error("Failed to fetch portfolio");
       
       const data = await response.json();
-      const element = document.createElement("a");
-      element.setAttribute("href", "data:text/plain;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2)));
-      element.setAttribute("download", `${user?.firstName}_${user?.lastName}_Portfolio.json`);
-      element.style.display = "none";
-      document.body.appendChild(element);
-      element.click();
-      document.body.removeChild(element);
-      
+      const fullName = `${data.user.firstName} ${data.user.lastName}`;
+
+      const docDefinition: any = {
+        pageSize: "A4",
+        pageMargins: [40, 40, 40, 40],
+        content: [
+          // Header
+          {
+            text: fullName,
+            fontSize: 24,
+            bold: true,
+            alignment: "center",
+            margin: [0, 0, 0, 5],
+          },
+          {
+            text: data.user.role.charAt(0).toUpperCase() + data.user.role.slice(1),
+            fontSize: 12,
+            alignment: "center",
+            color: "#666666",
+            margin: [0, 0, 0, 10],
+          },
+          {
+            text: data.user.email,
+            fontSize: 10,
+            alignment: "center",
+            color: "#0066cc",
+            margin: [0, 0, 0, 15],
+          },
+          
+          // Divider
+          {
+            canvas: [
+              {
+                type: "line",
+                x1: 0,
+                y1: 5,
+                x2: 515,
+                y2: 5,
+                lineWidth: 1,
+                lineColor: "#cccccc",
+              },
+            ],
+            margin: [0, 0, 0, 15],
+          },
+
+          // Verified Certificates Section
+          {
+            text: "VERIFIED CREDENTIALS",
+            fontSize: 12,
+            bold: true,
+            color: "#1a1a1a",
+            margin: [0, 0, 0, 10],
+          },
+          
+          // Certificates Table
+          data.certificates && data.certificates.length > 0
+            ? {
+                table: {
+                  headerRows: 1,
+                  widths: ["*", "30%", "20%"],
+                  body: [
+                    [
+                      {
+                        text: "Certificate",
+                        bold: true,
+                        color: "white",
+                        fillColor: "#0066cc",
+                        margin: [5, 5, 5, 5],
+                      },
+                      {
+                        text: "Institution",
+                        bold: true,
+                        color: "white",
+                        fillColor: "#0066cc",
+                        margin: [5, 5, 5, 5],
+                      },
+                      {
+                        text: "Date",
+                        bold: true,
+                        color: "white",
+                        fillColor: "#0066cc",
+                        margin: [5, 5, 5, 5],
+                      },
+                    ],
+                    ...data.certificates.map((cert: any) => [
+                      {
+                        text: cert.title,
+                        margin: [5, 5, 5, 5],
+                      },
+                      {
+                        text: cert.institution,
+                        margin: [5, 5, 5, 5],
+                      },
+                      {
+                        text: new Date(cert.createdAt).toLocaleDateString(),
+                        margin: [5, 5, 5, 5],
+                      },
+                    ]),
+                  ],
+                },
+                margin: [0, 0, 0, 20],
+              }
+            : {
+                text: "No verified credentials yet.",
+                italics: true,
+                color: "#999999",
+                margin: [0, 0, 0, 20],
+              },
+
+          // Summary Section
+          {
+            text: "PORTFOLIO SUMMARY",
+            fontSize: 12,
+            bold: true,
+            color: "#1a1a1a",
+            margin: [0, 0, 0, 10],
+          },
+          {
+            columns: [
+              {
+                width: "25%",
+                stack: [
+                  {
+                    text: data.certificates.length,
+                    fontSize: 16,
+                    bold: true,
+                    color: "#0066cc",
+                  },
+                  {
+                    text: "Total Certificates",
+                    fontSize: 10,
+                    color: "#666666",
+                  },
+                ],
+              },
+              {
+                width: "25%",
+                stack: [
+                  {
+                    text: data.certificates.filter((c: any) => c.status === "approved").length,
+                    fontSize: 16,
+                    bold: true,
+                    color: "#00aa00",
+                  },
+                  {
+                    text: "Verified",
+                    fontSize: 10,
+                    color: "#666666",
+                  },
+                ],
+              },
+              {
+                width: "25%",
+                stack: [
+                  {
+                    text: data.viewCount || 0,
+                    fontSize: 16,
+                    bold: true,
+                    color: "#aa6600",
+                  },
+                  {
+                    text: "Portfolio Views",
+                    fontSize: 10,
+                    color: "#666666",
+                  },
+                ],
+              },
+              {
+                width: "25%",
+                stack: [
+                  {
+                    text: new Date().toLocaleDateString(),
+                    fontSize: 10,
+                    bold: true,
+                    color: "#666666",
+                  },
+                  {
+                    text: "Generated",
+                    fontSize: 10,
+                    color: "#666666",
+                  },
+                ],
+              },
+            ],
+            margin: [0, 0, 0, 20],
+          },
+
+          // Footer
+          {
+            text: "This document was generated from AcademicFolioChain - Blockchain Certificate Verification System",
+            fontSize: 8,
+            alignment: "center",
+            color: "#999999",
+            margin: [0, 20, 0, 0],
+          },
+        ],
+      };
+
+      pdfMake.createPdf(docDefinition).download(`${fullName}_Portfolio.pdf`);
+
       toast({
         title: "Success",
-        description: "Portfolio downloaded successfully",
+        description: "Portfolio downloaded as PDF",
       });
     } catch (error) {
+      console.error("Download portfolio error:", error);
       toast({
         title: "Error",
         description: "Failed to download portfolio",
