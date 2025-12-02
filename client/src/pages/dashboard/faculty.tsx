@@ -3,10 +3,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { CertificateCard } from "@/components/dashboard/certificate-card";
+import { QRScanner } from "@/components/ui/qr-scanner";
 import { getAuthHeaders } from "@/lib/auth";
 import type { Certificate } from "@shared/schema";
 import { 
@@ -17,7 +21,9 @@ import {
   Bell,
   LogOut,
   User,
-  Presentation
+  Presentation,
+  QrCode as QRCodeIcon,
+  AlertCircle
 } from "lucide-react";
 
 export default function FacultyDashboard() {
@@ -25,6 +31,10 @@ export default function FacultyDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedFilter, setSelectedFilter] = useState<string>("pending");
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectingCertId, setRejectingCertId] = useState<string | null>(null);
+  const [fixSuggestions, setFixSuggestions] = useState("");
 
   // Fetch certificates for review
   const { data: certificates = [], isLoading } = useQuery({
@@ -77,8 +87,20 @@ export default function FacultyDashboard() {
     reviewMutation.mutate({ id, status: "approved", reviewNotes: "Approved by faculty" });
   };
 
-  const handleReject = (id: string) => {
-    reviewMutation.mutate({ id, status: "rejected", reviewNotes: "Rejected - requires additional verification" });
+  const handleRejectClick = (id: string) => {
+    setRejectingCertId(id);
+    setShowRejectModal(true);
+  };
+
+  const handleRejectConfirm = () => {
+    if (!rejectingCertId) return;
+    const notes = fixSuggestions 
+      ? `Rejected - Fix Suggestions: ${fixSuggestions}` 
+      : "Rejected - requires additional verification";
+    reviewMutation.mutate({ id: rejectingCertId, status: "rejected", reviewNotes: notes });
+    setShowRejectModal(false);
+    setRejectingCertId(null);
+    setFixSuggestions("");
   };
 
   // Calculate stats
@@ -215,7 +237,7 @@ export default function FacultyDashboard() {
                         certificate={certificate}
                         showActions={selectedFilter === "pending"}
                         onApprove={handleApprove}
-                        onReject={handleReject}
+                        onReject={handleRejectClick}
                       />
                     ))}
                   </div>
@@ -226,6 +248,31 @@ export default function FacultyDashboard() {
 
           {/* Faculty Tools */}
           <div className="space-y-6">
+            {/* QR Scanner */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <QRCodeIcon className="h-5 w-5" />
+                  QR Verification
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Scan QR codes from printed certificates to instantly verify authenticity
+                  </p>
+                  <Button 
+                    className="w-full"
+                    onClick={() => setShowQRScanner(true)}
+                    data-testid="open-qr-scanner-button"
+                  >
+                    <QRCodeIcon className="h-4 w-4 mr-2" />
+                    Scan QR Code
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* AI Assistant */}
             <Card>
               <CardHeader>
@@ -296,6 +343,61 @@ export default function FacultyDashboard() {
           </div>
         </div>
       </div>
+
+      {/* QR Scanner */}
+      <QRScanner open={showQRScanner} onClose={() => setShowQRScanner(false)} />
+
+      {/* Reject with Fix Suggestions Modal */}
+      <Dialog open={showRejectModal} onOpenChange={setShowRejectModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-red-600" />
+              Reject Certificate
+            </DialogTitle>
+            <DialogDescription>
+              Provide constructive feedback and fix suggestions for the student
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="fixSuggestions">Fix Suggestions</Label>
+              <textarea
+                id="fixSuggestions"
+                placeholder="e.g., Please re-upload with a clearer scan, ensure all text is visible, use original document..."
+                className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                rows={4}
+                value={fixSuggestions}
+                onChange={(e) => setFixSuggestions(e.target.value)}
+                data-testid="fix-suggestions-textarea"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Personalized feedback helps students understand what to fix
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowRejectModal(false);
+                  setFixSuggestions("");
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleRejectConfirm}
+                className="flex-1"
+                data-testid="confirm-reject-button"
+              >
+                Reject & Send Feedback
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
