@@ -32,7 +32,7 @@ interface PortfolioData {
   };
   portfolio: {
     skills: Array<{ id: string; title: string; institution: string; blockchainHash?: string; qrCode?: string; createdAt: string }>;
-    internships: Array<{ id: string; title: string; institution: string; duration?: string; blockchainHash?: string; qrCode?: string; createdAt: string }>;
+    internships: Array<{ id: string; title: string; institution: string; duration?: string; description?: string; blockchainHash?: string; qrCode?: string; createdAt: string }>;
     hackathons: Array<{ id: string; title: string; institution: string; blockchainHash?: string; qrCode?: string; createdAt: string }>;
     workshops: Array<{ id: string; title: string; institution: string; blockchainHash?: string; qrCode?: string; createdAt: string }>;
     projects: Array<{ id: string; title: string; description: string; githubLink: string; createdAt: string }>;
@@ -203,6 +203,7 @@ export default function Portfolio() {
                       <Badge className="bg-green-100 text-green-800">Verified</Badge>
                     </div>
                     {internship.duration && <p className="text-sm text-muted-foreground">📅 Duration: {internship.duration}</p>}
+                    {internship.description && <p className="text-sm text-foreground mt-2">{internship.description}</p>}
                     <p className="text-xs text-muted-foreground mt-2">Verified: {new Date(internship.createdAt).toLocaleDateString()}</p>
                   </div>
                 ))}

@@ -541,6 +541,7 @@ export async function registerRoutes(
           title: c.title,
           institution: c.institution,
           duration: c.internshipDuration,
+          description: c.description,
           blockchainHash: c.blockchainHash,
           qrCode: c.qrCode,
           createdAt: c.createdAt,
