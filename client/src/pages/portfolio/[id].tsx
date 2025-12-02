@@ -18,7 +18,8 @@ import {
   Shield,
   Tag as CertIcon,
   Eye,
-  Briefcase
+  Briefcase,
+  Star
 } from "lucide-react";
 
 interface PortfolioData {
@@ -169,7 +170,10 @@ export default function Portfolio() {
         {portfolioData.skills && portfolioData.skills.length > 0 && (
           <Card className="mb-8">
             <CardContent className="p-6">
-              <h2 className="text-xl font-bold text-foreground mb-6">Approved Skills</h2>
+              <h2 className="text-xl font-bold text-foreground mb-6 flex items-center gap-2">
+                <Award className="h-5 w-5" />
+                Skills
+              </h2>
               <div className="flex flex-wrap gap-2">
                 {portfolioData.skills.map((skill) => (
                   <div key={skill.id} className="flex flex-col gap-1">
