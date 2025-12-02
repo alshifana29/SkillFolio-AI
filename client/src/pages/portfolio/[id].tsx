@@ -188,14 +188,14 @@ export default function Portfolio() {
           </Card>
         )}
 
-        {/* Internships Section */}
-        {portfolioData.internships && portfolioData.internships.length > 0 && (
-          <Card className="mb-8">
-            <CardContent className="p-6">
-              <h2 className="text-xl font-bold text-foreground mb-6 flex items-center gap-2">
-                <Briefcase className="h-5 w-5" />
-                Internships
-              </h2>
+        {/* Internships Section - Always show */}
+        <Card className="mb-8">
+          <CardContent className="p-6">
+            <h2 className="text-xl font-bold text-foreground mb-6 flex items-center gap-2">
+              <Briefcase className="h-5 w-5" />
+              Internships
+            </h2>
+            {portfolioData.internships && portfolioData.internships.length > 0 ? (
               <div className="space-y-4">
                 {portfolioData.internships.map((internship) => (
                   <div key={internship.id} className="border rounded-lg p-4 bg-blue-50">
@@ -212,9 +212,11 @@ export default function Portfolio() {
                   </div>
                 ))}
               </div>
-            </CardContent>
-          </Card>
-        )}
+            ) : (
+              <p className="text-muted-foreground text-center py-8">No internships added yet. Upload and get approved internship certificates to see them here.</p>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Projects Section */}
         {portfolioData.projects && portfolioData.projects.length > 0 && (
