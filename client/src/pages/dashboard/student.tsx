@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -64,7 +64,6 @@ export default function StudentDashboard() {
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [qrCode, setQrCode] = useState<string>("");
   const [copied, setCopied] = useState(false);
-  const [certificateType, setCertificateType] = useState<string>("course");
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
 
@@ -72,10 +71,17 @@ export default function StudentDashboard() {
     register,
     handleSubmit,
     reset,
+    control,
+    watch,
     formState: { errors },
   } = useForm<InsertCertificate>({
     resolver: zodResolver(insertCertificateSchema),
+    defaultValues: {
+      certificateType: "course",
+    },
   });
+
+  const watchCertificateType = watch("certificateType");
 
   const {
     register: registerProject,
@@ -618,20 +624,26 @@ export default function StudentDashboard() {
                   
                   <div>
                     <Label htmlFor="certificateType">Certificate Type</Label>
-                    <Select onValueChange={(value) => { setCertificateType(value); }} defaultValue="course">
-                      <SelectTrigger id="certificateType" data-testid="certificate-type-select">
-                        <SelectValue placeholder="Select certificate type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="course">Course</SelectItem>
-                        <SelectItem value="hackathon">Hackathon</SelectItem>
-                        <SelectItem value="internship">Internship</SelectItem>
-                        <SelectItem value="workshop">Workshop</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Controller
+                      name="certificateType"
+                      control={control}
+                      render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <SelectTrigger id="certificateType" data-testid="certificate-type-select">
+                            <SelectValue placeholder="Select certificate type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="course">Course</SelectItem>
+                            <SelectItem value="hackathon">Hackathon</SelectItem>
+                            <SelectItem value="internship">Internship</SelectItem>
+                            <SelectItem value="workshop">Workshop</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
                   </div>
 
-                  {certificateType === "internship" && (
+                  {watchCertificateType === "internship" && (
                     <div>
                       <Label htmlFor="internshipDuration">Internship Duration</Label>
                       <Input
