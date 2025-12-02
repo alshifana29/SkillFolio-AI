@@ -1,0 +1,121 @@
+{
+  "userRegistration_success": {
+    "description": "Response on successful user registration (POST /api/auth/register)",
+    "data": {
+      "user": {
+        "id": "user_2cTj8n9m4KzL6pQ7rX1sYvA3wE5",
+        "firstName": "John",
+        "lastName": "Doe",
+        "email": "john.doe@example.com",
+        "role": "student",
+        "isActive": true,
+        "createdAt": "2025-11-19T10:00:00.000Z",
+        "updatedAt": "2025-11-19T10:00:00.000Z"
+      },
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    }
+  },
+  "userLogin_success": {
+    "description": "Response on successful user login (POST /api/auth/login)",
+    "data": {
+      "user": {
+        "id": "user_2cTj8n9m4KzL6pQ7rX1sYvA3wE5",
+        "firstName": "John",
+        "lastName": "Doe",
+        "email": "john.doe@example.com",
+        "role": "student",
+        "isActive": true
+      },
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    }
+  },
+  "getStudentCertificates_success": {
+    "description": "Response for a student fetching their certificates (GET /api/certificates)",
+    "data": [
+      {
+        "id": "cert_8aF4bC2dE1gH6iJ0kL3mN5oP7",
+        "title": "Introduction to Artificial Intelligence",
+        "institution": "Online University",
+        "status": "approved",
+        "createdAt": "2025-10-15T14:30:00.000Z",
+        "reviewedBy": "user_faculty_1a2b3c",
+        "blockchainHash": "0xabc123...",
+        "qrCode": "data:image/png;base64,iVBORw0KGgo..."
+      },
+      {
+        "id": "cert_9bA5cD3eF2hI7jK1lM4nO6pQ8",
+        "title": "Web Development Bootcamp",
+        "institution": "Code Academy",
+        "status": "pending",
+        "createdAt": "2025-11-10T11:00:00.000Z",
+        "reviewedBy": null,
+        "blockchainHash": null,
+        "qrCode": null
+      }
+    ]
+  },
+  "approveCertificate_success": {
+    "data": {
+      "id": "cert_9bA5cD3eF2hI7jK1lM4nO6pQ8",
+      "userId": "user_2cTj8n9m4KzL6pQ7rX1sYvA3wE5",
+      "title": "Web Development Bootcamp",
+      "institution": "Code Academy",
+      "status": "approved",
+      "reviewedBy": "user_faculty_1a2b3c",
+      "reviewNotes": "Excellent work and project submission.",
+      "blockchainHash": "0xdef456...",
+      "qrCode": "data:image/png;base64,iVBORw0KGgo..."
+    }
+  },
+  "getPublicPortfolio_success": {
+    "data": {
+      "user": {
+        "id": "user_2cTj8n9m4KzL6pQ7rX1sYvA3wE5",
+        "firstName": "John",
+        "lastName": "Doe",
+        "email": "john.doe@example.com",
+        "role": "student"
+      },
+      "certificates": [
+        {
+          "id": "cert_8aF4bC2dE1gH6iJ0kL3mN5oP7",
+          "title": "Introduction to Artificial Intelligence",
+          "institution": "Online University",
+          "status": "approved",
+          "blockchainHash": "0xabc123..."
+        },
+        {
+          "id": "cert_9bA5cD3eF2hI7jK1lM4nO6pQ8",
+          "title": "Web Development Bootcamp",
+          "institution": "Code Academy",
+          "status": "approved",
+          "blockchainHash": "0xdef456..."
+        }
+      ],
+      "viewCount": 128
+    }
+  },
+  "getAdminAnalytics_success": {
+    "description": "Response for an admin fetching overview analytics (GET /api/analytics/overview)",
+    "data": {
+      "users": {
+        "total": 150,
+        "roles": {
+          "student": 120,
+          "faculty": 25,
+          "admin": 5
+        },
+        "newThisWeek": 12
+      },
+      "certificates": {
+        "total": 450,
+        "status": {
+          "pending": 30,
+          "approved": 400,
+          "rejected": 20
+        },
+        "approvedThisWeek": 45
+      }
+    }
+  }
+}

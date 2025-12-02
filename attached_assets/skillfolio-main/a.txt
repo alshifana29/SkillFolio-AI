@@ -1,0 +1,5 @@
+compute pHash(image) → compare with DB hashes (Hamming distance).
+templateMatch = featureMatching(image, template) → normalized score.
+cnnProb = CNN.predict(image_features).
+finalScore = weightedSum([OCR_consistency, hash_score, template_score, cnnProb]).
+Decision thresholds: <0.5 Genuine, 0.5–0.8 Suspicious, ≥0.8 Tampered.
