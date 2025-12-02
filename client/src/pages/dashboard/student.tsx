@@ -277,223 +277,221 @@ export default function StudentDashboard() {
       
       const data = await response.json();
       const fullName = `${data.user.firstName} ${data.user.lastName}`;
-      
-      // Flatten portfolio data into single certificates array
       const portfolio = data.portfolio || {};
-      const allCerts = [
-        ...(portfolio.skills || []),
-        ...(portfolio.internships || []),
+      
+      const content: any[] = [
+        // Header - Name and Title
+        {
+          text: fullName,
+          fontSize: 28,
+          bold: true,
+          alignment: "left",
+          color: "#1a1a1a",
+          margin: [0, 0, 0, 2],
+        },
+        {
+          text: "Professional Portfolio",
+          fontSize: 12,
+          color: "#8F0D0D",
+          alignment: "left",
+          margin: [0, 0, 0, 10],
+        },
+        
+        // Contact Info
+        {
+          text: data.user.email,
+          fontSize: 10,
+          color: "#0066cc",
+          margin: [0, 0, 0, 15],
+        },
+        
+        // Divider
+        {
+          canvas: [{
+            type: "line",
+            x1: 0, y1: 0, x2: 515, y2: 0,
+            lineWidth: 2,
+            lineColor: "#8F0D0D",
+          }],
+          margin: [0, 0, 0, 15],
+        },
+      ];
+
+      // WORK EXPERIENCE (Internships)
+      if (portfolio.internships && portfolio.internships.length > 0) {
+        content.push({
+          text: "WORK EXPERIENCE",
+          fontSize: 13,
+          bold: true,
+          color: "#450808",
+          margin: [0, 10, 0, 8],
+        });
+
+        portfolio.internships.forEach((internship: any, idx: number) => {
+          if (idx > 0) {
+            content.push({ text: "", margin: [0, 5, 0, 5] });
+          }
+          content.push({
+            columns: [
+              {
+                width: "70%",
+                text: internship.title,
+                fontSize: 11,
+                bold: true,
+                color: "#1a1a1a",
+              },
+              {
+                width: "30%",
+                text: internship.duration || "",
+                fontSize: 10,
+                color: "#666666",
+                alignment: "right",
+              },
+            ],
+            margin: [0, 0, 0, 2],
+          });
+          content.push({
+            text: internship.institution,
+            fontSize: 10,
+            color: "#666666",
+            margin: [0, 0, 0, 4],
+          });
+          if (internship.description) {
+            content.push({
+              text: internship.description,
+              fontSize: 9,
+              color: "#444444",
+              margin: [0, 0, 0, 0],
+            });
+          }
+        });
+
+        content.push({ text: "", margin: [0, 8, 0, 0] });
+      }
+
+      // SKILLS (Courses)
+      if (portfolio.skills && portfolio.skills.length > 0) {
+        content.push({
+          text: "SKILLS",
+          fontSize: 13,
+          bold: true,
+          color: "#450808",
+          margin: [0, 5, 0, 8],
+        });
+
+        const skillsText = portfolio.skills
+          .map((skill: any) => `• ${skill.title}`)
+          .join("\n");
+        
+        content.push({
+          text: skillsText,
+          fontSize: 10,
+          color: "#444444",
+          margin: [0, 0, 0, 8],
+        });
+      }
+
+      // PROJECTS
+      if (portfolio.projects && portfolio.projects.length > 0) {
+        content.push({
+          text: "PROJECTS",
+          fontSize: 13,
+          bold: true,
+          color: "#450808",
+          margin: [0, 5, 0, 8],
+        });
+
+        portfolio.projects.forEach((project: any, idx: number) => {
+          if (idx > 0) {
+            content.push({ text: "", margin: [0, 5, 0, 5] });
+          }
+          content.push({
+            text: project.title,
+            fontSize: 11,
+            bold: true,
+            color: "#1a1a1a",
+            margin: [0, 0, 0, 2],
+          });
+          if (project.description) {
+            content.push({
+              text: project.description,
+              fontSize: 9,
+              color: "#444444",
+              margin: [0, 0, 0, 2],
+            });
+          }
+          if (project.githubLink) {
+            content.push({
+              text: project.githubLink,
+              fontSize: 9,
+              color: "#0066cc",
+              decoration: "underline",
+              margin: [0, 0, 0, 0],
+            });
+          }
+        });
+
+        content.push({ text: "", margin: [0, 8, 0, 0] });
+      }
+
+      // ACHIEVEMENTS (Hackathons & Workshops)
+      const achievements = [
         ...(portfolio.hackathons || []),
         ...(portfolio.workshops || []),
       ];
 
+      if (achievements.length > 0) {
+        content.push({
+          text: "ACHIEVEMENTS",
+          fontSize: 13,
+          bold: true,
+          color: "#450808",
+          margin: [0, 5, 0, 8],
+        });
+
+        const achievementsText = achievements
+          .map((ach: any) => `• ${ach.title} — ${ach.institution}`)
+          .join("\n");
+        
+        content.push({
+          text: achievementsText,
+          fontSize: 10,
+          color: "#444444",
+          margin: [0, 0, 0, 8],
+        });
+      }
+
+      // Footer
+      content.push({
+        text: `Generated on ${new Date().toLocaleDateString()} | Verified Credentials: ${
+          (portfolio.skills?.length || 0) + 
+          (portfolio.internships?.length || 0) + 
+          (portfolio.hackathons?.length || 0) + 
+          (portfolio.workshops?.length || 0)
+        } | Portfolio Views: ${data.viewCount || 0}`,
+        fontSize: 8,
+        alignment: "center",
+        color: "#999999",
+        margin: [0, 20, 0, 0],
+      });
+
       const docDefinition: any = {
         pageSize: "A4",
         pageMargins: [40, 40, 40, 40],
-        content: [
-          // Header
-          {
-            text: fullName,
-            fontSize: 24,
-            bold: true,
-            alignment: "center",
-            margin: [0, 0, 0, 5],
-          },
-          {
-            text: data.user.role.charAt(0).toUpperCase() + data.user.role.slice(1),
-            fontSize: 12,
-            alignment: "center",
-            color: "#666666",
-            margin: [0, 0, 0, 10],
-          },
-          {
-            text: data.user.email,
-            fontSize: 10,
-            alignment: "center",
-            color: "#0066cc",
-            margin: [0, 0, 0, 15],
-          },
-          
-          // Divider
-          {
-            canvas: [
-              {
-                type: "line",
-                x1: 0,
-                y1: 5,
-                x2: 515,
-                y2: 5,
-                lineWidth: 1,
-                lineColor: "#cccccc",
-              },
-            ],
-            margin: [0, 0, 0, 15],
-          },
-
-          // Verified Credentials Section
-          {
-            text: "VERIFIED CREDENTIALS",
-            fontSize: 12,
-            bold: true,
-            color: "#1a1a1a",
-            margin: [0, 0, 0, 10],
-          },
-          
-          // Certificates Table
-          allCerts.length > 0
-            ? {
-                table: {
-                  headerRows: 1,
-                  widths: ["*", "30%", "20%"],
-                  body: [
-                    [
-                      {
-                        text: "Certificate",
-                        bold: true,
-                        color: "white",
-                        fillColor: "#0066cc",
-                        margin: [5, 5, 5, 5],
-                      },
-                      {
-                        text: "Institution",
-                        bold: true,
-                        color: "white",
-                        fillColor: "#0066cc",
-                        margin: [5, 5, 5, 5],
-                      },
-                      {
-                        text: "Date",
-                        bold: true,
-                        color: "white",
-                        fillColor: "#0066cc",
-                        margin: [5, 5, 5, 5],
-                      },
-                    ],
-                    ...allCerts.map((cert: any) => [
-                      {
-                        text: cert.title,
-                        margin: [5, 5, 5, 5],
-                      },
-                      {
-                        text: cert.institution,
-                        margin: [5, 5, 5, 5],
-                      },
-                      {
-                        text: new Date(cert.createdAt).toLocaleDateString(),
-                        margin: [5, 5, 5, 5],
-                      },
-                    ]),
-                  ],
-                },
-                margin: [0, 0, 0, 20],
-              }
-            : {
-                text: "No verified credentials yet.",
-                italics: true,
-                color: "#999999",
-                margin: [0, 0, 0, 20],
-              },
-
-          // Summary Section
-          {
-            text: "PORTFOLIO SUMMARY",
-            fontSize: 12,
-            bold: true,
-            color: "#1a1a1a",
-            margin: [0, 0, 0, 10],
-          },
-          {
-            columns: [
-              {
-                width: "25%",
-                stack: [
-                  {
-                    text: allCerts.length,
-                    fontSize: 16,
-                    bold: true,
-                    color: "#0066cc",
-                  },
-                  {
-                    text: "Total Certificates",
-                    fontSize: 10,
-                    color: "#666666",
-                  },
-                ],
-              },
-              {
-                width: "25%",
-                stack: [
-                  {
-                    text: allCerts.length,
-                    fontSize: 16,
-                    bold: true,
-                    color: "#00aa00",
-                  },
-                  {
-                    text: "Verified",
-                    fontSize: 10,
-                    color: "#666666",
-                  },
-                ],
-              },
-              {
-                width: "25%",
-                stack: [
-                  {
-                    text: data.viewCount || 0,
-                    fontSize: 16,
-                    bold: true,
-                    color: "#aa6600",
-                  },
-                  {
-                    text: "Portfolio Views",
-                    fontSize: 10,
-                    color: "#666666",
-                  },
-                ],
-              },
-              {
-                width: "25%",
-                stack: [
-                  {
-                    text: new Date().toLocaleDateString(),
-                    fontSize: 10,
-                    bold: true,
-                    color: "#666666",
-                  },
-                  {
-                    text: "Generated",
-                    fontSize: 10,
-                    color: "#666666",
-                  },
-                ],
-              },
-            ],
-            margin: [0, 0, 0, 20],
-          },
-
-          // Footer
-          {
-            text: "This document was generated from AcademicFolioChain - Blockchain Certificate Verification System",
-            fontSize: 8,
-            alignment: "center",
-            color: "#999999",
-            margin: [0, 20, 0, 0],
-          },
-        ],
+        content: content,
       };
 
-      pdfMake.createPdf(docDefinition).download(`${fullName}_Portfolio.pdf`);
+      pdfMake.createPdf(docDefinition).download(`${fullName}_Resume.pdf`);
 
       toast({
         title: "Success",
-        description: "Portfolio downloaded as PDF",
+        description: "Resume downloaded as PDF",
       });
     } catch (error) {
       console.error("Download portfolio error:", error);
       toast({
         title: "Error",
-        description: "Failed to download portfolio",
+        description: "Failed to download resume",
         variant: "destructive",
       });
     }
