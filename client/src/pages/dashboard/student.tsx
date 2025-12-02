@@ -277,6 +277,15 @@ export default function StudentDashboard() {
       
       const data = await response.json();
       const fullName = `${data.user.firstName} ${data.user.lastName}`;
+      
+      // Flatten portfolio data into single certificates array
+      const portfolio = data.portfolio || {};
+      const allCerts = [
+        ...(portfolio.skills || []),
+        ...(portfolio.internships || []),
+        ...(portfolio.hackathons || []),
+        ...(portfolio.workshops || []),
+      ];
 
       const docDefinition: any = {
         pageSize: "A4",
@@ -321,7 +330,7 @@ export default function StudentDashboard() {
             margin: [0, 0, 0, 15],
           },
 
-          // Verified Certificates Section
+          // Verified Credentials Section
           {
             text: "VERIFIED CREDENTIALS",
             fontSize: 12,
@@ -331,7 +340,7 @@ export default function StudentDashboard() {
           },
           
           // Certificates Table
-          data.certificates && data.certificates.length > 0
+          allCerts.length > 0
             ? {
                 table: {
                   headerRows: 1,
@@ -360,7 +369,7 @@ export default function StudentDashboard() {
                         margin: [5, 5, 5, 5],
                       },
                     ],
-                    ...data.certificates.map((cert: any) => [
+                    ...allCerts.map((cert: any) => [
                       {
                         text: cert.title,
                         margin: [5, 5, 5, 5],
@@ -399,7 +408,7 @@ export default function StudentDashboard() {
                 width: "25%",
                 stack: [
                   {
-                    text: data.certificates.length,
+                    text: allCerts.length,
                     fontSize: 16,
                     bold: true,
                     color: "#0066cc",
@@ -415,7 +424,7 @@ export default function StudentDashboard() {
                 width: "25%",
                 stack: [
                   {
-                    text: data.certificates.filter((c: any) => c.status === "approved").length,
+                    text: allCerts.length,
                     fontSize: 16,
                     bold: true,
                     color: "#00aa00",
