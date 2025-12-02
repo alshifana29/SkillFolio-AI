@@ -135,7 +135,7 @@ export default function Portfolio() {
               </div>
               <div className="flex items-center space-x-2">
                 <CertIcon className="text-primary" />
-                <span>{portfolio.skills.length + portfolio.internships.length + portfolio.hackathons.length + portfolio.workshops.length} Verified Credentials</span>
+                <span>{(portfolio.portfolio?.skills.length || 0) + (portfolio.portfolio?.internships.length || 0) + (portfolio.portfolio?.hackathons.length || 0) + (portfolio.portfolio?.workshops.length || 0)} Verified Credentials</span>
               </div>
               <div className="flex items-center space-x-2">
                 <Shield className="text-green-600" />
