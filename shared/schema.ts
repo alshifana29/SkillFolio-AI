@@ -21,10 +21,12 @@ export const certificates = pgTable("certificates", {
   userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
   title: text("title").notNull(),
   institution: text("institution").notNull(),
+  certificateType: text("certificate_type").notNull().default("course"),
   description: text("description"),
   fileUrl: text("file_url"),
   fileName: text("file_name"),
   fileType: text("file_type"),
+  internshipDuration: text("internship_duration"),
   status: text("status").notNull().default("pending"),
   reviewedBy: varchar("reviewed_by", { length: 36 }).references(() => users.id),
   reviewNotes: text("review_notes"),
@@ -120,6 +122,10 @@ export const insertCertificateSchema = createInsertSchema(certificates).omit({
 }).extend({
   title: z.string().min(1, "Title is required"),
   institution: z.string().min(1, "Institution is required"),
+  certificateType: z.enum(["course", "hackathon", "internship", "workshop"], {
+    errorMap: () => ({ message: "Invalid certificate type" }),
+  }).default("course"),
+  internshipDuration: z.string().optional(),
 });
 
 export const insertNotificationSchema = createInsertSchema(notifications).omit({

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -58,6 +59,7 @@ export default function StudentDashboard() {
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [qrCode, setQrCode] = useState<string>("");
   const [copied, setCopied] = useState(false);
+  const [certificateType, setCertificateType] = useState<string>("course");
 
   const {
     register,
@@ -88,8 +90,12 @@ export default function StudentDashboard() {
       formData.append("file", data.file);
       formData.append("title", data.certificateData.title);
       formData.append("institution", data.certificateData.institution);
+      formData.append("certificateType", data.certificateData.certificateType || "course");
       if (data.certificateData.description) {
         formData.append("description", data.certificateData.description);
+      }
+      if (data.certificateData.internshipDuration) {
+        formData.append("internshipDuration", data.certificateData.internshipDuration);
       }
 
       const response = await fetch("/api/certificates", {
@@ -484,7 +490,7 @@ export default function StudentDashboard() {
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="title">Tag Title</Label>
+                      <Label htmlFor="title">Certificate Title</Label>
                       <Input
                         id="title"
                         placeholder="e.g., Bachelor's Degree"
@@ -508,6 +514,33 @@ export default function StudentDashboard() {
                       )}
                     </div>
                   </div>
+                  
+                  <div>
+                    <Label htmlFor="certificateType">Certificate Type</Label>
+                    <Select onValueChange={(value) => { setCertificateType(value); }} defaultValue="course">
+                      <SelectTrigger id="certificateType" data-testid="certificate-type-select">
+                        <SelectValue placeholder="Select certificate type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="course">Course</SelectItem>
+                        <SelectItem value="hackathon">Hackathon</SelectItem>
+                        <SelectItem value="internship">Internship</SelectItem>
+                        <SelectItem value="workshop">Workshop</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {certificateType === "internship" && (
+                    <div>
+                      <Label htmlFor="internshipDuration">Internship Duration</Label>
+                      <Input
+                        id="internshipDuration"
+                        placeholder="e.g., 3 months, June - August 2024"
+                        {...register("internshipDuration")}
+                        data-testid="internship-duration-input"
+                      />
+                    </div>
+                  )}
                   
                   <div>
                     <Label htmlFor="description">Description (Optional)</Label>
