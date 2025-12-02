@@ -1,0 +1,269 @@
+SYSTEM OVERRIDE (Do NOT skip this part)
+
+You are an expert full-stack engineer and AI module architect joining an existing project called AcademicFolio.
+Your job is to continue the project from the existing codebase exactly as it is, without rewriting, replacing, or resetting anything already built.
+
+You MUST:
+
+Understand the project architecture
+
+Extend it safely
+
+Integrate new modules
+
+Add missing features
+
+Improve existing code without breaking it
+
+Maintain folder structure, naming, and style consistency
+
+Respect all existing routes, DB schemas, components, and logic
+
+You may only add, extend, or improve—NOT recreate.
+
+🔥 PROJECT CONTEXT (Very Important — Read fully)
+
+The current project AcademicFolio is a full-stack Vite React + Node/Express + PostgreSQL + Drizzle ORM application.
+
+Existing completion includes:
+
+✔ Upload → Review → Approve → Blockchain Hash → QR → Portfolio
+✔ Full RBAC: Student, Faculty, Admin, Recruiter
+✔ Portfolio display for approved certificates
+✔ Hashing + internal blockchain table
+✔ Certificate approval workflow
+✔ Recruiter search
+✔ Clean modular backend/frontend separation
+
+Your job is to continue this project and finish all pending major modules, without overwriting existing work.
+
+🎯 YOUR NEXT TASKS: CONTINUE DEVELOPMENT — NOT START OVER
+
+You must enhance and complete the following modules:
+
+1. AI Forgery Detection Module (Full Implementation)
+
+Add a new backend module:
+
+/server/modules/forgeryDetection
+
+
+Implement:
+
+OCR (Tesseract.js or Python microservice)
+
+Error Level Analysis (ELA)
+
+Noise Variance Analysis
+
+Font inconsistency detection
+
+Template mismatch (ORB/SIFT via OpenCV JS or Python microservice)
+
+QR code validation
+
+EXIF metadata check
+
+Tamper zone detection
+
+Fraud scoring: Genuine / Suspicious / Forged
+
+Human-readable forensic explanation
+
+Add endpoint:
+
+POST /api/verify/forgery
+
+
+Response:
+
+{
+  authenticity: "genuine/suspicious/forged",
+  fraudScore: 0-100,
+  elaScore: ...,
+  noiseScore: ...,
+  templateScore: ...,
+  tamperZones: [...],
+  reasoning: "...",
+  extractedText: "...",
+  qrData: "...",
+  metadata: {...}
+}
+
+
+⚠ IMPORTANT:
+Do NOT rewrite existing certificate upload system—extend it.
+
+2. Integrate the AI Module into Certificate Review Workflow
+
+Modify faculty/admin review page:
+
+When they open a pending certificate:
+
+Auto-trigger AI Forgery Scan
+
+Show fraudScore
+
+Show heatmap overlay
+
+Show text extracted
+
+Show QR validity
+
+Show probability of tampering
+
+Provide “Forgery Report” popup modal
+
+Faculty can override AI decision but must be logged for audit.
+
+3. Improve Blockchain Hashing System
+
+Extend your current custom blockchain:
+
+Add block difficulty
+
+Add nonce
+
+Add previousHash integrity check
+
+Add chain validation endpoint
+
+Add chain audit page for Admin:
+
+GET /api/blockchain/audit
+
+
+Show:
+
+Full chain
+
+Integrity status
+
+Broken links
+
+Recomputed hash mismatches
+
+4. Add Certificate Analytics Dashboard (Admin)
+
+Build analytics:
+
+Number of uploaded certificates
+
+Pending
+
+Approved
+
+Rejected
+
+Suspected fraud
+
+Confirmed fraud
+
+Recruiter search trends
+
+Most common certificate sources
+
+Faculty approval time distribution
+
+Frontend charts using Recharts/Chart.js.
+
+5. Add Student Activity Timeline
+
+On student profile:
+
+Show timeline of uploads
+
+Approvals
+
+Hash registration
+
+Recruiter views
+
+6. Add Recruiter “Smart Filters”
+
+Enhance recruiter search:
+
+Filter by skills extracted from OCR
+
+Filter by certificate type
+
+Filter by institution
+
+Filter by AI-verified-only certificates
+
+Filter by date range
+
+7. Add Notification System
+
+Implement notifications:
+
+Student → certificate approved/rejected
+
+Faculty/Admin → new pending certificates
+
+Recruiter → matching profile updates
+
+Use PostgreSQL table + polling (lightweight, no heavy services needed).
+
+8. Add Certificate Duplicate Detection (Hash + OCR-Similarity)
+
+When uploading:
+
+Compute perceptual hash (pHash, dHash)
+
+Compare with all previous certificates
+
+If similarity > 85%, flag for faculty
+
+Add endpoint:
+
+POST /api/certificate/check-duplicate
+
+9. Code Cleanup & Documentation
+
+Add JSDoc comments everywhere
+
+Add /docs folder
+
+Add README updates
+
+Add OpenAPI/Swagger documentation
+
+📌 REPLIT AI – DEVELOPMENT RULES
+
+While continuing the project:
+
+✔ DO NOT delete existing code
+✔ DO NOT rename existing tables or migrations
+✔ DO NOT change existing API names
+✔ ONLY extend, add, and improve
+✔ All new code must integrate with the existing structure
+✔ Use the existing styles and UI components
+✔ Keep the project lightweight
+✔ Ensure compatibility with an 8GB RAM laptop
+
+🚀 NOW PERFORM THE FOLLOWING ACTION
+
+Continue the existing project and generate:
+
+The new backend modules
+
+Frontend components
+
+Database additions
+
+API endpoints
+
+Utility functions
+
+Integration code
+
+Migrations
+
+UI enhancements
+
+Documentation
+
+Example code blocks
+
+Everything should connect seamlessly into the current AcademicFolio project exactly as it exists now.
