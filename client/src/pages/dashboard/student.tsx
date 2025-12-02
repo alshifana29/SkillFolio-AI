@@ -83,8 +83,9 @@ export default function StudentDashboard() {
   // Tag upload mutation
   const uploadMutation = useMutation({
     mutationFn: async (data: { certificateData: InsertCertificate; file: File }) => {
+      const token = localStorage.getItem("auth_token");
       const formData = new FormData();
-      formData.append("certificate", data.file);
+      formData.append("file", data.file);
       formData.append("title", data.certificateData.title);
       formData.append("institution", data.certificateData.institution);
       if (data.certificateData.description) {
@@ -93,7 +94,9 @@ export default function StudentDashboard() {
 
       const response = await fetch("/api/certificates", {
         method: "POST",
-        headers: getAuthHeaders(),
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
         body: formData,
       });
 

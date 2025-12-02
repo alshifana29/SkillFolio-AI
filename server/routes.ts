@@ -43,6 +43,8 @@ const upload = multer({
   },
 });
 
+const uploadFields = upload.fields([{ name: "file", maxCount: 1 }]);
+
 interface AuthRequest extends Request {
   user?: { id: string; email: string; role: string };
 }
@@ -169,20 +171,23 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/certificates", authenticateToken, upload.single("file"), async (req: AuthRequest, res: Response) => {
+  app.post("/api/certificates", authenticateToken, uploadFields, async (req: AuthRequest, res: Response) => {
     try {
       const certData = insertCertificateSchema.parse(req.body);
       
+      const files = req.files as { [key: string]: Express.Multer.File[] } | undefined;
+      const uploadedFile = files?.file?.[0];
+
       const certificate = await storage.createCertificate({
         ...certData,
         userId: req.user!.id,
-        fileUrl: req.file ? `/uploads/${req.file.filename}` : null,
-        fileName: req.file?.originalname || null,
-        fileType: req.file?.mimetype || null,
+        fileUrl: uploadedFile ? `/uploads/${uploadedFile.filename}` : null,
+        fileName: uploadedFile?.originalname || null,
+        fileType: uploadedFile?.mimetype || null,
       });
 
-      if (req.file) {
-        const fileBuffer = fs.readFileSync(req.file.path);
+      if (uploadedFile) {
+        const fileBuffer = fs.readFileSync(uploadedFile.path);
         const analysis = await forgeryDetector.analyzeCertificate(certificate, fileBuffer);
         
         await storage.updateCertificate(certificate.id, {
