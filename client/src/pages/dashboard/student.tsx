@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { FileUpload } from "@/components/ui/file-upload";
@@ -14,18 +15,21 @@ import { StatsCard } from "@/components/dashboard/stats-card";
 import { CertificateCard } from "@/components/dashboard/certificate-card";
 import { getAuthHeaders } from "@/lib/auth";
 import { insertCertificateSchema, type InsertCertificate, type Certificate } from "@shared/schema";
+import * as QRCode from "qrcode";
 import { 
   GraduationCap, 
   Tag as CertIcon, 
   CheckCircle, 
   Clock, 
   Eye,
-  QrCode,
+  QrCode as QRCodeIcon,
   Download,
   BarChart3,
   Bell,
   LogOut,
-  User
+  User,
+  Copy,
+  Check
 } from "lucide-react";
 
 export default function StudentDashboard() {
@@ -33,6 +37,11 @@ export default function StudentDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
+  const [qrCode, setQrCode] = useState<string>("");
+  const [copied, setCopied] = useState(false);
 
   const {
     register,
@@ -108,6 +117,69 @@ export default function StudentDashboard() {
     }
 
     uploadMutation.mutate({ certificateData: data, file: selectedFile });
+  };
+
+  const generatePortfolioQR = async () => {
+    try {
+      const portfolioUrl = `${window.location.origin}/portfolio/${user?.id}`;
+      const qr = await QRCode.toDataURL(portfolioUrl);
+      setQrCode(qr);
+      setShowQRModal(true);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to generate QR code",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const downloadPortfolio = async () => {
+    try {
+      const response = await fetch(`/api/portfolio/${user?.id}`, {
+        headers: getAuthHeaders(),
+      });
+      if (!response.ok) throw new Error("Failed to fetch portfolio");
+      
+      const data = await response.json();
+      const element = document.createElement("a");
+      element.setAttribute("href", "data:text/plain;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2)));
+      element.setAttribute("download", `${user?.firstName}_${user?.lastName}_Portfolio.json`);
+      element.style.display = "none";
+      document.body.appendChild(element);
+      element.click();
+      document.body.removeChild(element);
+      
+      toast({
+        title: "Success",
+        description: "Portfolio downloaded successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to download portfolio",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const copyPortfolioLink = async () => {
+    const portfolioUrl = `${window.location.origin}/portfolio/${user?.id}`;
+    try {
+      await navigator.clipboard.writeText(portfolioUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast({
+        title: "Copied",
+        description: "Portfolio link copied to clipboard",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to copy link",
+        variant: "destructive",
+      });
+    }
   };
 
   // Calculate stats
@@ -307,7 +379,7 @@ export default function StudentDashboard() {
                       View Full Portfolio
                     </Button>
                   </Link>
-                  <Button variant="outline" className="w-full" data-testid="share-portfolio-button">
+                  <Button variant="outline" className="w-full" onClick={() => setShowShareModal(true)} data-testid="share-portfolio-button">
                     Share Portfolio
                   </Button>
                 </div>
@@ -321,15 +393,15 @@ export default function StudentDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <Button variant="ghost" className="w-full justify-between" data-testid="generate-qr-button">
+                  <Button variant="ghost" className="w-full justify-between" onClick={generatePortfolioQR} data-testid="generate-qr-button">
                     <div className="flex items-center space-x-3">
-                      <QrCode className="text-primary" />
+                      <QRCodeIcon className="text-primary" />
                       <span>Generate QR Code</span>
                     </div>
                     <span>→</span>
                   </Button>
                   
-                  <Button variant="ghost" className="w-full justify-between" data-testid="download-portfolio-button">
+                  <Button variant="ghost" className="w-full justify-between" onClick={downloadPortfolio} data-testid="download-portfolio-button">
                     <div className="flex items-center space-x-3">
                       <Download className="text-primary" />
                       <span>Download Portfolio</span>
@@ -337,7 +409,7 @@ export default function StudentDashboard() {
                     <span>→</span>
                   </Button>
                   
-                  <Button variant="ghost" className="w-full justify-between" data-testid="view-analytics-button">
+                  <Button variant="ghost" className="w-full justify-between" onClick={() => setShowAnalyticsModal(true)} data-testid="view-analytics-button">
                     <div className="flex items-center space-x-3">
                       <BarChart3 className="text-primary" />
                       <span>View Analytics</span>
@@ -350,6 +422,100 @@ export default function StudentDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Share Portfolio Modal */}
+      <Dialog open={showShareModal} onOpenChange={setShowShareModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Share Your Portfolio</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-sm text-muted-foreground">Portfolio Link</Label>
+              <div className="flex items-center gap-2 mt-2">
+                <Input
+                  readOnly
+                  value={`${window.location.origin}/portfolio/${user?.id}`}
+                  className="text-sm"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={copyPortfolioLink}
+                  data-testid="copy-portfolio-link-button"
+                >
+                  {copied ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Share this link with recruiters to showcase your verified certificates.
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* QR Code Modal */}
+      <Dialog open={showQRModal} onOpenChange={setShowQRModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Portfolio QR Code</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center space-y-4">
+            {qrCode && (
+              <img src={qrCode} alt="QR Code" className="w-48 h-48 border rounded-lg p-2 bg-white" />
+            )}
+            <Button
+              onClick={() => {
+                const link = document.createElement("a");
+                link.href = qrCode;
+                link.download = `${user?.firstName}_${user?.lastName}_portfolio_qr.png`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              }}
+              className="w-full"
+              data-testid="download-qr-button"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Download QR Code
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Analytics Modal */}
+      <Dialog open={showAnalyticsModal} onOpenChange={setShowAnalyticsModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Portfolio Analytics</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-muted/50 rounded-lg p-4">
+                <div className="text-2xl font-bold">{portfolioViews}</div>
+                <div className="text-sm text-muted-foreground">Total Views</div>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4">
+                <div className="text-2xl font-bold">{verifiedCertificates}</div>
+                <div className="text-sm text-muted-foreground">Verified Certs</div>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4">
+                <div className="text-2xl font-bold">{totalCertificates}</div>
+                <div className="text-sm text-muted-foreground">Total Certs</div>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4">
+                <div className="text-2xl font-bold">{pendingCertificates}</div>
+                <div className="text-sm text-muted-foreground">Pending Review</div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
