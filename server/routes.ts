@@ -354,6 +354,68 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/certificates/:id/review", authenticateToken, requireRole("faculty", "admin"), async (req: AuthRequest, res: Response) => {
+    try {
+      const { status, reviewNotes } = req.body;
+      const certificate = await storage.getCertificateById(req.params.id);
+      
+      if (!certificate) {
+        return res.status(404).json({ error: "Certificate not found" });
+      }
+
+      if (certificate.status !== "pending") {
+        return res.status(400).json({ error: "Certificate is not pending review" });
+      }
+
+      if (status === "approved") {
+        const block = await blockchain.addCertificateToChain(certificate);
+        const verificationUrl = `${process.env.BASE_URL || "http://localhost:5000"}/verify/${block.hash}`;
+        const qrCode = await QRCode.toDataURL(verificationUrl);
+
+        const updatedCertificate = await storage.approveCertificate(
+          certificate.id,
+          req.user!.id,
+          reviewNotes || "Approved",
+          block.hash,
+          qrCode
+        );
+
+        await storage.logActivity(req.user!.id, "certificate_approved", "certificate", certificate.id);
+        await storage.createNotification({
+          userId: certificate.userId,
+          type: "certificate_approved",
+          title: "Certificate Approved",
+          message: `Your certificate "${certificate.title}" has been approved and added to the blockchain.`,
+          data: { certificateId: certificate.id, blockHash: block.hash },
+        });
+
+        res.json(updatedCertificate);
+      } else if (status === "rejected") {
+        const updatedCertificate = await storage.rejectCertificate(
+          certificate.id,
+          req.user!.id,
+          reviewNotes || "Rejected"
+        );
+
+        await storage.logActivity(req.user!.id, "certificate_rejected", "certificate", certificate.id);
+        await storage.createNotification({
+          userId: certificate.userId,
+          type: "certificate_rejected",
+          title: "Certificate Rejected",
+          message: `Your certificate "${certificate.title}" has been rejected. Reason: ${reviewNotes || "Not specified"}`,
+          data: { certificateId: certificate.id },
+        });
+
+        res.json(updatedCertificate);
+      } else {
+        return res.status(400).json({ error: "Invalid status. Use 'approved' or 'rejected'" });
+      }
+    } catch (error) {
+      console.error("Review certificate error:", error);
+      res.status(500).json({ error: "Failed to review certificate" });
+    }
+  });
+
   app.get("/api/certificates/:id/analysis", authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
       const certificate = await storage.getCertificateById(req.params.id);
