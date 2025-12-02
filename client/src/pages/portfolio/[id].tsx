@@ -165,17 +165,18 @@ export default function Portfolio() {
           </CardContent>
         </Card>
 
-        {/* Skills Section (from Course Certificates) */}
+        {/* Skills Section (from Course Certificates - displayed as tags) */}
         {portfolioData.skills && portfolioData.skills.length > 0 && (
           <Card className="mb-8">
             <CardContent className="p-6">
-              <h2 className="text-xl font-bold text-foreground mb-6">Skills & Courses</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <h2 className="text-xl font-bold text-foreground mb-6">Approved Skills</h2>
+              <div className="flex flex-wrap gap-2">
                 {portfolioData.skills.map((skill) => (
-                  <div key={skill.id} className="border rounded-lg p-4 bg-muted/30">
-                    <h3 className="font-semibold text-foreground">{skill.title}</h3>
-                    <p className="text-sm text-muted-foreground">{skill.institution}</p>
-                    <p className="text-xs text-muted-foreground mt-2">Verified: {new Date(skill.createdAt).toLocaleDateString()}</p>
+                  <div key={skill.id} className="flex flex-col gap-1">
+                    <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200 cursor-default">
+                      ✓ {skill.title}
+                    </Badge>
+                    <p className="text-xs text-muted-foreground text-center">{skill.institution}</p>
                   </div>
                 ))}
               </div>
@@ -183,17 +184,17 @@ export default function Portfolio() {
           </Card>
         )}
 
-        {/* Work Experience Section (from Internships) */}
+        {/* Internships Section */}
         {portfolioData.internships && portfolioData.internships.length > 0 && (
           <Card className="mb-8">
             <CardContent className="p-6">
               <h2 className="text-xl font-bold text-foreground mb-6 flex items-center gap-2">
                 <Briefcase className="h-5 w-5" />
-                Work Experience
+                Internships
               </h2>
               <div className="space-y-4">
                 {portfolioData.internships.map((internship) => (
-                  <div key={internship.id} className="border rounded-lg p-4">
+                  <div key={internship.id} className="border rounded-lg p-4 bg-blue-50">
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <h3 className="font-semibold text-foreground">{internship.title}</h3>
@@ -201,7 +202,7 @@ export default function Portfolio() {
                       </div>
                       <Badge className="bg-green-100 text-green-800">Verified</Badge>
                     </div>
-                    {internship.duration && <p className="text-sm text-muted-foreground">Duration: {internship.duration}</p>}
+                    {internship.duration && <p className="text-sm text-muted-foreground">📅 Duration: {internship.duration}</p>}
                     <p className="text-xs text-muted-foreground mt-2">Verified: {new Date(internship.createdAt).toLocaleDateString()}</p>
                   </div>
                 ))}
