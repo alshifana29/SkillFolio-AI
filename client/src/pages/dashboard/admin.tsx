@@ -71,9 +71,9 @@ export default function AdminDashboard() {
 
   // Fetch users data
   const { data: users = [], isLoading: usersLoading } = useQuery<UserData[]>({
-    queryKey: ["/api/users"],
+    queryKey: ["/api/admin/users"],
     queryFn: async () => {
-      const response = await fetch("/api/users", {
+      const response = await fetch("/api/admin/users", {
         headers: getAuthHeaders(),
       });
       if (!response.ok) throw new Error("Failed to fetch users");

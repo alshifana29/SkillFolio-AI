@@ -34,7 +34,16 @@ const upload = multer({
   storage: multerStorage,
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const allowedTypes = ["image/jpeg", "image/png", "image/gif", "application/pdf"];
+    const allowedTypes = [
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+      "image/bmp",
+      "image/tiff",
+      "application/pdf",
+    ];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
@@ -80,6 +89,31 @@ const requireRole = (...roles: string[]) => {
     next();
   };
 };
+
+function generateSmartSummary(user: any, certificates: any[], projects: any[]) {
+  const approvedCerts = certificates.filter(c => c.status === "approved");
+  const skills = approvedCerts.filter(c => c.certificateType === "course");
+  const internships = approvedCerts.filter(c => c.certificateType === "internship");
+  
+  let summary = `${user.firstName} ${user.lastName}`;
+  
+  if (internships.length > 0) {
+    summary += ` is an experienced candidate with ${internships.length} internship(s) including ${internships[0].institution}`;
+  } else {
+    summary += ` is a motivated learner`;
+  }
+
+  if (skills.length > 0) {
+    const skillNames = skills.slice(0, 3).map((s: any) => s.title).join(", ");
+    summary += `, skilled in ${skillNames}`;
+  }
+
+  if (projects.length > 0) {
+    summary += `. Portfolio showcases ${projects.length} project(s) demonstrating practical application of concepts.`;
+  }
+
+  return summary + ".";
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -186,14 +220,33 @@ export async function registerRoutes(
         fileType: uploadedFile?.mimetype || null,
       });
 
+      let responseCertificate = certificate;
+
       if (uploadedFile) {
+        const startTime = Date.now();
         const fileBuffer = fs.readFileSync(uploadedFile.path);
-        const analysis = await forgeryDetector.analyzeCertificate(certificate, fileBuffer);
         
-        await storage.updateCertificate(certificate.id, {
+        // Fetch full user details for name matching in AI analysis
+        const user = await storage.getUserById(req.user!.id);
+        const analysis = await forgeryDetector.analyzeCertificate(
+          certificate,
+          fileBuffer,
+          user,
+          uploadedFile.path,
+          uploadedFile.mimetype
+        );
+        const scanTime = Date.now() - startTime;
+        
+        // Add measurable metric to analysis for evaluation
+        analysis.reasoning += ` [AI Scan Time: ${scanTime}ms]`;
+        
+        const updatedCertificate = await storage.updateCertificate(certificate.id, {
           aiAnalysis: analysis.reasoning,
           fraudScore: analysis.fraudScore,
         });
+        if (updatedCertificate) {
+          responseCertificate = updatedCertificate;
+        }
 
         await forgeryDetector.saveForgeryReport(certificate.id, analysis);
       }
@@ -208,7 +261,7 @@ export async function registerRoutes(
         data: { certificateId: certificate.id },
       });
 
-      res.status(201).json(certificate);
+      res.status(201).json(responseCertificate);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors[0].message });
@@ -424,15 +477,29 @@ export async function registerRoutes(
       }
 
       const forgeryReport = await storage.getForgeryReportByCertificateId(certificate.id);
+      const refresh = String(req.query.refresh || "").toLowerCase() === "true";
       
-      if (forgeryReport) {
+      if (forgeryReport && !refresh) {
         res.json({
           ...forgeryReport,
           badge: forgeryDetector.getAuthenticityBadge(forgeryReport.authenticity),
           description: forgeryDetector.getFraudScoreDescription(forgeryReport.fraudScore),
         });
       } else {
-        const analysis = await forgeryDetector.analyzeCertificate(certificate);
+        const filePath = certificate.fileUrl
+          ? path.join(process.cwd(), certificate.fileUrl.replace(/^\/+/, ""))
+          : undefined;
+        const fileExists = !!filePath && fs.existsSync(filePath);
+        const fileBuffer = fileExists ? fs.readFileSync(filePath) : undefined;
+        const user = await storage.getUserById(certificate.userId);
+
+        const analysis = await forgeryDetector.analyzeCertificate(
+          certificate,
+          fileBuffer,
+          user || undefined,
+          filePath,
+          certificate.fileType || undefined
+        );
         const report = await forgeryDetector.saveForgeryReport(certificate.id, analysis);
         
         res.json({
@@ -571,8 +638,12 @@ export async function registerRoutes(
 
       const { password: _, ...userWithoutPassword } = user;
 
+      // Resume Optimization: Generate recruiter-friendly summary
+      const smartSummary = generateSmartSummary(user, approvedCerts, projects);
+
       res.json({
         user: userWithoutPassword,
+        summary: smartSummary,
         portfolio: {
           skills,
           internships,
@@ -634,10 +705,14 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/users", authenticateToken, requireRole("admin"), async (_req: AuthRequest, res: Response) => {
+  app.get("/api/admin/users", authenticateToken, requireRole("admin"), async (req: AuthRequest, res: Response) => {
     try {
       const users = await storage.getAllUsers();
-      const usersWithoutPassword = users.map(({ password: _, ...user }) => user);
+      console.log(`Admin ${req.user?.id} fetching users: found ${users.length} users`);
+      const usersWithoutPassword = users.map((user) => {
+        const { password, ...rest } = user;
+        return rest;
+      });
       res.json(usersWithoutPassword);
     } catch (error) {
       console.error("Get users error:", error);

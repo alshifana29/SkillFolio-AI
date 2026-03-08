@@ -53,6 +53,7 @@ export interface IStorage {
 
   createForgeryReport(report: Omit<ForgeryReport, "id" | "createdAt">): Promise<ForgeryReport>;
   getForgeryReportByCertificateId(certificateId: string): Promise<ForgeryReport | null>;
+  getRecentForgeryReports(limit?: number): Promise<ForgeryReport[]>;
 
   recordPortfolioView(userId: string, viewerIp?: string, viewerUserAgent?: string): Promise<PortfolioView>;
   getPortfolioViewCount(userId: string): Promise<number>;
@@ -231,8 +232,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getForgeryReportByCertificateId(certificateId: string): Promise<ForgeryReport | null> {
-    const [report] = await db.select().from(forgeryReports).where(eq(forgeryReports.certificateId, certificateId)).limit(1);
+    const [report] = await db.select()
+      .from(forgeryReports)
+      .where(eq(forgeryReports.certificateId, certificateId))
+      .orderBy(desc(forgeryReports.createdAt))
+      .limit(1);
     return report || null;
+  }
+
+  async getRecentForgeryReports(limit: number = 300): Promise<ForgeryReport[]> {
+    return db.select().from(forgeryReports).orderBy(desc(forgeryReports.createdAt)).limit(limit);
   }
 
   async recordPortfolioView(userId: string, viewerIp?: string, viewerUserAgent?: string): Promise<PortfolioView> {
