@@ -105,6 +105,33 @@ export const projects = pgTable("projects", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Recruiter features tables
+export const recruiterShortlist = pgTable("recruiter_shortlist", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  recruiterId: varchar("recruiter_id", { length: 36 }).notNull().references(() => users.id),
+  studentId: varchar("student_id", { length: 36 }).notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const recruiterNotes = pgTable("recruiter_notes", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  recruiterId: varchar("recruiter_id", { length: 36 }).notNull().references(() => users.id),
+  studentId: varchar("student_id", { length: 36 }).notNull().references(() => users.id),
+  note: text("note").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const contactRequests = pgTable("contact_requests", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  recruiterId: varchar("recruiter_id", { length: 36 }).notNull().references(() => users.id),
+  studentId: varchar("student_id", { length: 36 }).notNull().references(() => users.id),
+  message: text("message"),
+  status: text("status").notNull().default("pending"), // pending, accepted, rejected
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
@@ -171,3 +198,7 @@ export type ActivityLog = typeof activityLogs.$inferSelect;
 
 export type Project = typeof projects.$inferSelect;
 export type InsertProject = z.infer<typeof insertProjectSchema>;
+
+export type RecruiterShortlist = typeof recruiterShortlist.$inferSelect;
+export type RecruiterNote = typeof recruiterNotes.$inferSelect;
+export type ContactRequest = typeof contactRequests.$inferSelect;

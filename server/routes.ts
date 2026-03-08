@@ -791,6 +791,341 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================
+  // RECRUITER API ROUTES
+  // ============================================
+
+  // GET /api/students - Fetch all students with certificate data (for recruiter search)
+  app.get("/api/students", authenticateToken, requireRole("recruiter"), async (req: AuthRequest, res: Response) => {
+    try {
+      const { keywords, field, year } = req.query;
+      const students = await storage.getUsersByRole("student");
+
+      const studentsWithData = await Promise.all(
+        students.map(async (student) => {
+          const certs = await storage.getCertificatesByUserId(student.id);
+          const approvedCerts = certs.filter(c => c.status === "approved");
+          const viewCount = await storage.getPortfolioViewCount(student.id);
+          const { password: _, ...safe } = student;
+
+          // Extract skills from certificate titles
+          const skillTags = approvedCerts.map(c => c.title);
+
+          return {
+            ...safe,
+            certificatesCount: approvedCerts.length,
+            portfolioViews: viewCount,
+            status: approvedCerts.length > 5 ? "available" as const : approvedCerts.length > 0 ? "seeking" as const : "hired" as const,
+            skills: skillTags,
+            certificates: approvedCerts.map(c => ({
+              id: c.id,
+              title: c.title,
+              institution: c.institution,
+              certificateType: c.certificateType,
+            })),
+          };
+        })
+      );
+
+      let filtered = studentsWithData;
+
+      // Keyword search across name, email, certificate titles, institutions
+      if (keywords && typeof keywords === "string" && keywords.trim()) {
+        const kw = keywords.toLowerCase();
+        filtered = filtered.filter(s =>
+          s.firstName.toLowerCase().includes(kw) ||
+          s.lastName.toLowerCase().includes(kw) ||
+          s.email.toLowerCase().includes(kw) ||
+          s.skills.some(sk => sk.toLowerCase().includes(kw)) ||
+          s.certificates.some(c =>
+            c.title.toLowerCase().includes(kw) ||
+            c.institution.toLowerCase().includes(kw)
+          )
+        );
+      }
+
+      // Sort by certificates count descending
+      filtered.sort((a, b) => b.certificatesCount - a.certificatesCount);
+
+      await storage.logActivity(req.user!.id, "recruiter_search", "search", undefined, { keywords, field, year, resultCount: filtered.length });
+
+      res.json(filtered);
+    } catch (error) {
+      console.error("Get students error:", error);
+      res.status(500).json({ error: "Failed to fetch students" });
+    }
+  });
+
+  // Recruiter Shortlist
+  app.post("/api/recruiter/shortlist/:studentId", authenticateToken, requireRole("recruiter"), async (req: AuthRequest, res: Response) => {
+    try {
+      const student = await storage.getUserById(req.params.studentId);
+      if (!student) return res.status(404).json({ error: "Student not found" });
+
+      const entry = await storage.addToShortlist(req.user!.id, req.params.studentId);
+      await storage.logActivity(req.user!.id, "candidate_shortlisted", "shortlist", req.params.studentId);
+      res.json(entry);
+    } catch (error) {
+      console.error("Shortlist error:", error);
+      res.status(500).json({ error: "Failed to shortlist candidate" });
+    }
+  });
+
+  app.delete("/api/recruiter/shortlist/:studentId", authenticateToken, requireRole("recruiter"), async (req: AuthRequest, res: Response) => {
+    try {
+      await storage.removeFromShortlist(req.user!.id, req.params.studentId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Remove shortlist error:", error);
+      res.status(500).json({ error: "Failed to remove from shortlist" });
+    }
+  });
+
+  app.get("/api/recruiter/shortlist", authenticateToken, requireRole("recruiter"), async (req: AuthRequest, res: Response) => {
+    try {
+      const shortlist = await storage.getShortlist(req.user!.id);
+
+      // Enrich with student data
+      const enriched = await Promise.all(
+        shortlist.map(async (entry) => {
+          const student = await storage.getUserById(entry.studentId);
+          if (!student) return null;
+          const certs = await storage.getCertificatesByUserId(student.id);
+          const approvedCerts = certs.filter(c => c.status === "approved");
+          const viewCount = await storage.getPortfolioViewCount(student.id);
+          const { password: _, ...safe } = student;
+          return {
+            ...entry,
+            student: {
+              ...safe,
+              certificatesCount: approvedCerts.length,
+              portfolioViews: viewCount,
+              skills: approvedCerts.map(c => c.title),
+            },
+          };
+        })
+      );
+
+      res.json(enriched.filter(Boolean));
+    } catch (error) {
+      console.error("Get shortlist error:", error);
+      res.status(500).json({ error: "Failed to get shortlist" });
+    }
+  });
+
+  // Recruiter Notes  
+  app.post("/api/recruiter/notes/:studentId", authenticateToken, requireRole("recruiter"), async (req: AuthRequest, res: Response) => {
+    try {
+      const { note } = req.body;
+      if (!note || typeof note !== "string") return res.status(400).json({ error: "Note is required" });
+
+      const entry = await storage.addRecruiterNote(req.user!.id, req.params.studentId, note);
+      res.json(entry);
+    } catch (error) {
+      console.error("Add note error:", error);
+      res.status(500).json({ error: "Failed to add note" });
+    }
+  });
+
+  app.get("/api/recruiter/notes/:studentId", authenticateToken, requireRole("recruiter"), async (req: AuthRequest, res: Response) => {
+    try {
+      const notes = await storage.getRecruiterNotes(req.user!.id, req.params.studentId);
+      res.json(notes);
+    } catch (error) {
+      console.error("Get notes error:", error);
+      res.status(500).json({ error: "Failed to get notes" });
+    }
+  });
+
+  app.delete("/api/recruiter/notes/:noteId", authenticateToken, requireRole("recruiter"), async (req: AuthRequest, res: Response) => {
+    try {
+      await storage.deleteRecruiterNote(req.params.noteId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete note error:", error);
+      res.status(500).json({ error: "Failed to delete note" });
+    }
+  });
+
+  // Contact Requests
+  app.post("/api/recruiter/contact-request/:studentId", authenticateToken, requireRole("recruiter"), async (req: AuthRequest, res: Response) => {
+    try {
+      const { message } = req.body;
+      const student = await storage.getUserById(req.params.studentId);
+      if (!student) return res.status(404).json({ error: "Student not found" });
+
+      const entry = await storage.createContactRequest(req.user!.id, req.params.studentId, message);
+
+      // Send notification to student
+      const recruiter = await storage.getUserById(req.user!.id);
+      await storage.createNotification({
+        userId: req.params.studentId,
+        type: "contact_request",
+        title: "New Contact Request",
+        message: `${recruiter?.firstName || 'A recruiter'} ${recruiter?.lastName || ''} wants to connect with you.`,
+        data: { requestId: entry.id, recruiterId: req.user!.id },
+      });
+
+      await storage.logActivity(req.user!.id, "contact_request_sent", "contact_request", entry.id);
+      res.json(entry);
+    } catch (error) {
+      console.error("Contact request error:", error);
+      res.status(500).json({ error: "Failed to send contact request" });
+    }
+  });
+
+  app.get("/api/recruiter/contact-requests", authenticateToken, requireRole("recruiter"), async (req: AuthRequest, res: Response) => {
+    try {
+      const requests = await storage.getContactRequestsByRecruiter(req.user!.id);
+      res.json(requests);
+    } catch (error) {
+      console.error("Get contact requests error:", error);
+      res.status(500).json({ error: "Failed to get contact requests" });
+    }
+  });
+
+  // Candidate Compare
+  app.get("/api/recruiter/compare", authenticateToken, requireRole("recruiter"), async (req: AuthRequest, res: Response) => {
+    try {
+      const { ids } = req.query;
+      if (!ids || typeof ids !== "string") return res.status(400).json({ error: "ids query parameter required" });
+
+      const studentIds = ids.split(",").map(id => id.trim());
+      const results = await Promise.all(
+        studentIds.map(async (studentId) => {
+          const student = await storage.getUserById(studentId);
+          if (!student) return null;
+          const certs = await storage.getCertificatesByUserId(studentId);
+          const approvedCerts = certs.filter(c => c.status === "approved");
+          const projects = await storage.getProjectsByUserId(studentId);
+          const viewCount = await storage.getPortfolioViewCount(studentId);
+          const { password: _, ...safe } = student;
+
+          return {
+            ...safe,
+            certificatesCount: approvedCerts.length,
+            portfolioViews: viewCount,
+            projectsCount: projects.length,
+            skills: approvedCerts.map(c => c.title),
+            certificateTypes: {
+              course: approvedCerts.filter(c => c.certificateType === "course").length,
+              internship: approvedCerts.filter(c => c.certificateType === "internship").length,
+              hackathon: approvedCerts.filter(c => c.certificateType === "hackathon").length,
+              workshop: approvedCerts.filter(c => c.certificateType === "workshop").length,
+            },
+          };
+        })
+      );
+
+      res.json(results.filter(Boolean));
+    } catch (error) {
+      console.error("Compare error:", error);
+      res.status(500).json({ error: "Failed to compare candidates" });
+    }
+  });
+
+  // Skill-based matching
+  app.get("/api/recruiter/match", authenticateToken, requireRole("recruiter"), async (req: AuthRequest, res: Response) => {
+    try {
+      const { skills } = req.query;
+      if (!skills || typeof skills !== "string") return res.status(400).json({ error: "skills query parameter required" });
+
+      const skillList = skills.split(",").map(s => s.trim().toLowerCase());
+      const students = await storage.getUsersByRole("student");
+
+      const matchedStudents = await Promise.all(
+        students.map(async (student) => {
+          const certs = await storage.getCertificatesByUserId(student.id);
+          const approvedCerts = certs.filter(c => c.status === "approved");
+          const { password: _, ...safe } = student;
+
+          // Match score: how many skill keywords match certificate titles
+          let matchScore = 0;
+          const matchedSkills: string[] = [];
+          for (const cert of approvedCerts) {
+            for (const skill of skillList) {
+              if (cert.title.toLowerCase().includes(skill) || cert.institution.toLowerCase().includes(skill)) {
+                matchScore++;
+                if (!matchedSkills.includes(skill)) matchedSkills.push(skill);
+              }
+            }
+          }
+
+          if (matchScore === 0) return null;
+
+          const viewCount = await storage.getPortfolioViewCount(student.id);
+
+          return {
+            ...safe,
+            certificatesCount: approvedCerts.length,
+            portfolioViews: viewCount,
+            matchScore,
+            matchedSkills,
+            skills: approvedCerts.map(c => c.title),
+          };
+        })
+      );
+
+      const result = matchedStudents.filter(Boolean).sort((a: any, b: any) => b.matchScore - a.matchScore);
+      res.json(result);
+    } catch (error) {
+      console.error("Match error:", error);
+      res.status(500).json({ error: "Failed to match candidates" });
+    }
+  });
+
+  // Recruiter Dashboard Stats
+  app.get("/api/recruiter/dashboard", authenticateToken, requireRole("recruiter"), async (req: AuthRequest, res: Response) => {
+    try {
+      const shortlist = await storage.getShortlist(req.user!.id);
+      const activity = await storage.getActivityByUserId(req.user!.id);
+      const contactRequests = await storage.getContactRequestsByRecruiter(req.user!.id);
+
+      const candidatesViewed = activity.filter(a => a.action === "recruiter_search" || a.action === "portfolio_viewed").length;
+      const certificatesVerified = activity.filter(a => a.action === "certificate_verified").length;
+      const searchesPerformed = activity.filter(a => a.action === "recruiter_search").length;
+
+      // Get recent verifications from activity
+      const recentVerifications = activity
+        .filter(a => a.action === "certificate_verified")
+        .slice(0, 5)
+        .map(a => ({
+          id: a.id,
+          action: a.action,
+          metadata: a.metadata,
+          createdAt: a.createdAt,
+        }));
+
+      res.json({
+        shortlistedCount: shortlist.length,
+        candidatesViewed,
+        certificatesVerified,
+        searchesPerformed,
+        contactRequestsSent: contactRequests.length,
+        recentVerifications,
+      });
+    } catch (error) {
+      console.error("Get recruiter dashboard error:", error);
+      res.status(500).json({ error: "Failed to get dashboard stats" });
+    }
+  });
+
+  // Log certificate verification by recruiter (for tracking)
+  app.post("/api/recruiter/verify-log", authenticateToken, requireRole("recruiter"), async (req: AuthRequest, res: Response) => {
+    try {
+      const { certificateHash, studentName, institution } = req.body;
+      await storage.logActivity(req.user!.id, "certificate_verified", "certificate", certificateHash, {
+        studentName,
+        institution,
+        verifiedAt: new Date().toISOString(),
+      });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Verify log error:", error);
+      res.status(500).json({ error: "Failed to log verification" });
+    }
+  });
+
   // Projects endpoints
   app.post("/api/projects", authenticateToken, async (req: AuthRequest, res: Response) => {
     try {

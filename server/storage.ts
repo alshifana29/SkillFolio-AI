@@ -9,6 +9,9 @@ import {
   notifications,
   activityLogs,
   projects,
+  recruiterShortlist,
+  recruiterNotes,
+  contactRequests,
   type User,
   type InsertUser,
   type Certificate,
@@ -21,6 +24,9 @@ import {
   type ActivityLog,
   type Project,
   type InsertProject,
+  type RecruiterShortlist,
+  type RecruiterNote,
+  type ContactRequest,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -80,6 +86,21 @@ export interface IStorage {
     certificates: { total: number; status: Record<string, number>; approvedThisWeek: number };
     blockchainBlocks: number;
   }>;
+
+  // Recruiter features
+  addToShortlist(recruiterId: string, studentId: string): Promise<RecruiterShortlist>;
+  removeFromShortlist(recruiterId: string, studentId: string): Promise<boolean>;
+  getShortlist(recruiterId: string): Promise<RecruiterShortlist[]>;
+  isShortlisted(recruiterId: string, studentId: string): Promise<boolean>;
+
+  addRecruiterNote(recruiterId: string, studentId: string, note: string): Promise<RecruiterNote>;
+  getRecruiterNotes(recruiterId: string, studentId: string): Promise<RecruiterNote[]>;
+  deleteRecruiterNote(noteId: string): Promise<boolean>;
+
+  createContactRequest(recruiterId: string, studentId: string, message?: string): Promise<ContactRequest>;
+  getContactRequestsForStudent(studentId: string): Promise<ContactRequest[]>;
+  getContactRequestsByRecruiter(recruiterId: string): Promise<ContactRequest[]>;
+  updateContactRequestStatus(id: string, status: string): Promise<ContactRequest | null>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -372,6 +393,78 @@ export class DatabaseStorage implements IStorage {
       },
       blockchainBlocks: blockCount,
     };
+  }
+
+  // Recruiter features
+  async addToShortlist(recruiterId: string, studentId: string): Promise<RecruiterShortlist> {
+    // Check if already shortlisted
+    const existing = await db.select().from(recruiterShortlist)
+      .where(and(eq(recruiterShortlist.recruiterId, recruiterId), eq(recruiterShortlist.studentId, studentId)))
+      .limit(1);
+    if (existing.length > 0) return existing[0];
+    
+    const [entry] = await db.insert(recruiterShortlist).values({ recruiterId, studentId }).returning();
+    return entry;
+  }
+
+  async removeFromShortlist(recruiterId: string, studentId: string): Promise<boolean> {
+    await db.delete(recruiterShortlist)
+      .where(and(eq(recruiterShortlist.recruiterId, recruiterId), eq(recruiterShortlist.studentId, studentId)));
+    return true;
+  }
+
+  async getShortlist(recruiterId: string): Promise<RecruiterShortlist[]> {
+    return db.select().from(recruiterShortlist)
+      .where(eq(recruiterShortlist.recruiterId, recruiterId))
+      .orderBy(desc(recruiterShortlist.createdAt));
+  }
+
+  async isShortlisted(recruiterId: string, studentId: string): Promise<boolean> {
+    const [entry] = await db.select().from(recruiterShortlist)
+      .where(and(eq(recruiterShortlist.recruiterId, recruiterId), eq(recruiterShortlist.studentId, studentId)))
+      .limit(1);
+    return !!entry;
+  }
+
+  async addRecruiterNote(recruiterId: string, studentId: string, note: string): Promise<RecruiterNote> {
+    const [entry] = await db.insert(recruiterNotes).values({ recruiterId, studentId, note }).returning();
+    return entry;
+  }
+
+  async getRecruiterNotes(recruiterId: string, studentId: string): Promise<RecruiterNote[]> {
+    return db.select().from(recruiterNotes)
+      .where(and(eq(recruiterNotes.recruiterId, recruiterId), eq(recruiterNotes.studentId, studentId)))
+      .orderBy(desc(recruiterNotes.createdAt));
+  }
+
+  async deleteRecruiterNote(noteId: string): Promise<boolean> {
+    await db.delete(recruiterNotes).where(eq(recruiterNotes.id, noteId));
+    return true;
+  }
+
+  async createContactRequest(recruiterId: string, studentId: string, message?: string): Promise<ContactRequest> {
+    const [entry] = await db.insert(contactRequests).values({ recruiterId, studentId, message }).returning();
+    return entry;
+  }
+
+  async getContactRequestsForStudent(studentId: string): Promise<ContactRequest[]> {
+    return db.select().from(contactRequests)
+      .where(eq(contactRequests.studentId, studentId))
+      .orderBy(desc(contactRequests.createdAt));
+  }
+
+  async getContactRequestsByRecruiter(recruiterId: string): Promise<ContactRequest[]> {
+    return db.select().from(contactRequests)
+      .where(eq(contactRequests.recruiterId, recruiterId))
+      .orderBy(desc(contactRequests.createdAt));
+  }
+
+  async updateContactRequestStatus(id: string, status: string): Promise<ContactRequest | null> {
+    const [entry] = await db.update(contactRequests)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(contactRequests.id, id))
+      .returning();
+    return entry || null;
   }
 }
 
