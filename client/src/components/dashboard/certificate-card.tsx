@@ -2,7 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { QRCodeDisplay } from "@/components/ui/qr-code";
-import { ExternalLink, GraduationCap, Award, Code, Globe, Shield, Hash, AlertTriangle } from "lucide-react";
+import { ExternalLink, GraduationCap, Award, Code, Globe, Shield, Hash, ListChecks } from "lucide-react";
 import type { Certificate } from "@shared/schema";
 import { useState } from "react";
 
@@ -12,6 +12,13 @@ interface CertificateCardProps {
   onApprove?: (id: string) => void;
   onReject?: (id: string) => void;
   onReview?: (id: string) => void;
+}
+
+// Represents the structured AI analysis result from the backend
+interface AiAnalysisResult {
+  score: number;
+  reasoning: string[];
+  isSuspicious: boolean;
 }
 
 const getStatusColor = (status: string) => {
@@ -46,16 +53,29 @@ export function CertificateCard({
   const Icon = getCertificateIcon(certificate.title);
   const status = certificate.status ?? 'pending';
   const [showHashes, setShowHashes] = useState(false);
+  const [showAnalysis, setShowAnalysis] = useState(false);
   
-  const getFraudBadge = (score: number | null) => {
+  // This function now processes the structured AI analysis object
+  const getFraudInfo = (analysis: AiAnalysisResult | string | null) => {
+    // Backwards compatibility for old string-based analysis
+    if (!analysis || typeof analysis === 'string') {
+      const score = certificate.fraudScore;
+      if (score === null || score === undefined) return null;
+      const reasoning = analysis ? [analysis] : ["Legacy analysis format."];
+      if (score < 40) return { label: `Score: ${score}`, className: "bg-green-100 text-green-800", isSuspicious: false, reasoning };
+      if (score < 60) return { label: `Score: ${score}`, className: "bg-yellow-100 text-yellow-800", isSuspicious: true, reasoning };
+      return { label: `Score: ${score}`, className: "bg-red-100 text-red-800", isSuspicious: true, reasoning };
+    }
+
+    const score = analysis.score;
     if (score === null || score === undefined) return null;
-    if (score < 20) return { label: `Score: ${score}`, className: "bg-green-100 text-green-800" };
-    if (score < 40) return { label: `Score: ${score}`, className: "bg-yellow-100 text-yellow-800" };
-    if (score < 60) return { label: `Score: ${score}`, className: "bg-orange-100 text-orange-800" };
-    return { label: `Score: ${score}`, className: "bg-red-100 text-red-800" };
+    if (score < 40) return { label: `Score: ${score}`, className: "bg-green-100 text-green-800", ...analysis };
+    if (score < 60) return { label: `Score: ${score}`, className: "bg-yellow-100 text-yellow-800", ...analysis };
+    return { label: `Score: ${score}`, className: "bg-red-100 text-red-800", ...analysis };
   };
 
-  const fraudBadge = getFraudBadge(certificate.fraudScore);
+  // The `as any` is a temporary bridge while the backend schema is updated
+  const fraudInfo = getFraudInfo(certificate.aiAnalysis as any);
   
   return (
     <Card className="certificate-card">
@@ -78,10 +98,10 @@ export function CertificateCard({
             <Badge className={getStatusColor(status)} data-testid={`certificate-status-${certificate.id}`}>
               {status.charAt(0).toUpperCase() + status.slice(1)}
             </Badge>
-            {fraudBadge && (
-              <Badge className={fraudBadge.className} variant="outline">
+            {fraudInfo && (
+              <Badge className={fraudInfo.className} variant="outline">
                 <Shield className="h-3 w-3 mr-1" />
-                {fraudBadge.label}
+                {fraudInfo.label}
               </Badge>
             )}
             {certificate.qrCode && (
@@ -93,18 +113,33 @@ export function CertificateCard({
           </div>
         </div>
 
-        {certificate.aiAnalysis && (
+        {fraudInfo && (
           <div className={`rounded-lg p-3 mb-3 ${
-            certificate.aiAnalysis.includes('⚠️') ? 'bg-red-50 border border-red-200' : 'bg-muted/30'
+            fraudInfo.isSuspicious ? 'bg-red-50 border border-red-200' : 'bg-muted/30'
           }`}>
-            <p className="text-sm text-muted-foreground mb-2">
-              {certificate.aiAnalysis.includes('⚠️') ? '⚠️ AI Analysis Flags:' : 'AI Analysis Result:'}
-            </p>
-            <p className={`text-sm ${
-              certificate.aiAnalysis.includes('⚠️') ? 'text-red-800' : 'text-foreground'
-            }`} data-testid={`certificate-ai-analysis-${certificate.id}`}>
-              {certificate.aiAnalysis}
-            </p>
+            <div className="flex justify-between items-center">
+              <p className="text-sm font-medium text-muted-foreground">
+                {fraudInfo.isSuspicious ? '⚠️ AI Analysis Flags:' : 'AI Analysis Summary:'}
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs px-2 h-6"
+                onClick={() => setShowAnalysis(!showAnalysis)}
+              >
+                <ListChecks className="h-3 w-3 mr-1" />
+                {showAnalysis ? "Hide" : "Show"} Details
+              </Button>
+            </div>
+            {showAnalysis && (
+              <ul className="mt-2 text-sm list-disc list-inside space-y-1" data-testid={`certificate-ai-analysis-${certificate.id}`}>
+                {fraudInfo.reasoning.map((reason, index) => (
+                  <li key={index} className={fraudInfo.isSuspicious ? 'text-red-800' : 'text-foreground'}>
+                    {reason}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
 
