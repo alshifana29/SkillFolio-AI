@@ -240,19 +240,48 @@ export async function registerRoutes(
         
         // Add measurable metric to analysis for evaluation
         analysis.reasoning += ` [AI Scan Time: ${scanTime}ms]`;
+
+        // Build structured forensic report (new JSON format)
+        const forensicReport = forgeryDetector.buildForensicReport(
+          analysis,
+          fileBuffer,
+          user ? { firstName: user.firstName, lastName: user.lastName } : null,
+          certificate.institution
+        );
+        // Add scan time to reasoning
+        forensicReport.reasoning.push(`AI Scan Time: ${scanTime}ms`);
+
+        // Strip null bytes and non-printable control chars that break PostgreSQL UTF-8
+        const sanitize = (s: string | null | undefined): string | null => {
+          if (!s) return null;
+          // Remove null bytes, then any remaining C0/C1 control chars except \n \r \t
+          return s.replace(/\0/g, "").replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "");
+        };
+        
+        const sanitizedOcrText = sanitize(analysis.extractedText);
+        const sanitizedAiAnalysis = sanitize(JSON.stringify(forensicReport));
+        const sanitizedFileHash = sanitize(analysis.metadata.fileHash);
+        const sanitizedContentHash = sanitize(analysis.metadata.contentHash);
+        const sanitizedImageHash = sanitize(analysis.metadata.imageHash);
+
+        console.log(`[Sanitize] ocrText null bytes: ${(analysis.extractedText || "").includes("\0")}, length: ${sanitizedOcrText?.length ?? 0}`);
+        console.log(`[Sanitize] aiAnalysis null bytes: ${JSON.stringify(forensicReport).includes("\0")}, length: ${sanitizedAiAnalysis?.length ?? 0}`);
         
         const updatedCertificate = await storage.updateCertificate(certificate.id, {
-          aiAnalysis: analysis.reasoning,
-          fraudScore: analysis.fraudScore,
-          fileHash: analysis.metadata.fileHash || null,
-          contentHash: analysis.metadata.contentHash || null,
-          imageHash: analysis.metadata.imageHash || null,
-          ocrText: analysis.extractedText || null,
+          aiAnalysis: sanitizedAiAnalysis,
+          fraudScore: forensicReport.score,
+          fileHash: sanitizedFileHash,
+          contentHash: sanitizedContentHash,
+          imageHash: sanitizedImageHash,
+          ocrText: sanitizedOcrText,
         });
         if (updatedCertificate) {
           responseCertificate = updatedCertificate;
         }
 
+        // Sanitize analysis text fields before saving forgery report
+        analysis.extractedText = sanitize(analysis.extractedText) || "";
+        analysis.reasoning = sanitize(analysis.reasoning) || "";
         await forgeryDetector.saveForgeryReport(certificate.id, analysis);
       }
 

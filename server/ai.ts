@@ -5,6 +5,11 @@ import type { Certificate, ForgeryReport } from "@shared/schema";
 import { exec } from "child_process";
 import util from "util";
 import { PDFParse } from "pdf-parse";
+import { analyzeMetadata } from "./ai/forensic/metadata-analysis";
+import { validateOcrText } from "./ai/forensic/ocr-analysis";
+import { analyzeQrPresence } from "./ai/forensic/qr-analysis";
+import { checkDuplicate } from "./ai/forensic/duplicate-check";
+import { aggregateForensicScore, type ForensicReport } from "./ai/forensic/fraud-score";
 
 const execAsync = util.promisify(exec);
 
@@ -272,7 +277,7 @@ export class ForgeryDetector {
         const parser = new PDFParse({ data: dataBuffer });
         const result = await parser.getText();
         await parser.destroy();
-        const text = result.text?.trim() || "";
+        const text = (result.text?.trim() || "").replace(/\0/g, "");
         if (text.length > 0) {
           console.log(`[OCR] PDF text extraction success. Text length: ${text.length} chars`);
           console.log(`[OCR Preview]: ${text.substring(0, 120).replace(/\n/g, " ")}...`);
@@ -299,7 +304,7 @@ export class ForgeryDetector {
             console.log(`[OCR] Tesseract info (psm ${psm}): ${stderr.split("\n")[0]}`);
           }
 
-          const clean = stdout.trim();
+          const clean = stdout.trim().replace(/\0/g, "");
           if (clean.length > 0) {
             console.log(`[OCR] Extraction success with psm ${psm}. Text length: ${clean.length} chars`);
             console.log(`[OCR Preview]: ${clean.substring(0, 120).replace(/\n/g, " ")}...`);
@@ -326,10 +331,11 @@ export class ForgeryDetector {
         .replace(/\\[nrt]/g, " ")
         .replace(/\\\d{3}/g, " ")
         .replace(/[^\x20-\x7E]+/g, " ")
+        .replace(/\0/g, "")
         .trim();
       if (value.length >= 4) chunks.push(value);
     }
-    return chunks.join(" ").trim();
+    return chunks.join(" ").replace(/\0/g, "").trim();
   }
 
   private normalizeText(text: string): string {
@@ -960,6 +966,62 @@ export class ForgeryDetector {
     if (score < 80) return "High Risk - Multiple red flags detected";
     return "Very High Risk - Strong indicators of forgery";
   }
+
+  /**
+   * Build a structured forensic report by running all forensic check modules.
+   * This produces the new JSON format stored in aiAnalysis.
+   * The base analysis from analyzeCertificate is combined with modular checks.
+   */
+  buildForensicReport(
+    analysis: ForgeryAnalysisResult,
+    fileBuffer?: Buffer,
+    user?: { firstName: string; lastName: string } | null,
+    institution?: string | null
+  ): ForensicReport {
+    // Collect base reasoning (split the existing reasoning string into parts)
+    const baseReasoning: string[] = analysis.reasoning
+      ? analysis.reasoning
+          .replace(/\s*\[AI Scan Time: \d+ms\]\s*$/, "")
+          .split(". ")
+          .map(s => s.trim())
+          .filter(s => s.length > 0)
+      : [];
+
+    // Run modular forensic checks
+    const metadataResult = fileBuffer ? analyzeMetadata(fileBuffer) : undefined;
+
+    const ocrResult = analysis.extractedText
+      ? validateOcrText(analysis.extractedText, user, institution)
+      : undefined;
+
+    const qrResult = fileBuffer ? analyzeQrPresence(fileBuffer) : undefined;
+
+    // Duplicate check against known perceptual hashes
+    // Uses the imageHash already computed in the base analysis
+    let duplicateResult = undefined;
+    if (analysis.metadata.imageHash) {
+      // We gather hashes synchronously from the data already loaded.
+      // The heavy comparison was already done in detectAnomalies;
+      // this module adds the structured output.
+      // For now, pass an empty list — the base analysis already handles
+      // duplicate scoring via detectAnomalies. This keeps the module
+      // as a placeholder for future pHash library integration.
+      duplicateResult = checkDuplicate(analysis.metadata.imageHash, []);
+    }
+
+    const report = aggregateForensicScore(
+      analysis.fraudScore,
+      baseReasoning,
+      metadataResult,
+      ocrResult,
+      qrResult,
+      duplicateResult
+    );
+
+    console.log(`[Forensic] Certificate forensic score: ${report.score} | Suspicious: ${report.isSuspicious}`);
+    return report;
+  }
 }
 
 export const forgeryDetector = new ForgeryDetector();
+export type { ForensicReport };

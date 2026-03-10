@@ -15,10 +15,57 @@ interface CertificateCardProps {
 }
 
 // Represents the structured AI analysis result from the backend
+interface ForensicChecks {
+  metadata?: string[];
+  ocr?: string[];
+  qr?: string[];
+  duplicate?: string[];
+}
+
 interface AiAnalysisResult {
   score: number;
   reasoning: string[];
   isSuspicious: boolean;
+  checks?: ForensicChecks;
+}
+
+/**
+ * Parse aiAnalysis from a certificate.
+ * Supports both legacy string format and new JSON forensic report format.
+ */
+function parseAiAnalysis(
+  aiAnalysis: string | null | undefined,
+  fraudScore: number | null | undefined
+): AiAnalysisResult | null {
+  if (!aiAnalysis && (fraudScore === null || fraudScore === undefined)) {
+    return null;
+  }
+
+  if (aiAnalysis) {
+    const trimmed = aiAnalysis.trim();
+    if (trimmed.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (typeof parsed.score === "number" && Array.isArray(parsed.reasoning)) {
+          return {
+            score: parsed.score,
+            isSuspicious: parsed.isSuspicious ?? parsed.score > 40,
+            reasoning: parsed.reasoning,
+            checks: parsed.checks ?? undefined,
+          };
+        }
+      } catch {
+        // Fall through to legacy format
+      }
+    }
+  }
+
+  const score = fraudScore ?? 0;
+  return {
+    score,
+    isSuspicious: score > 40,
+    reasoning: aiAnalysis ? [aiAnalysis] : ["Legacy analysis format."],
+  };
 }
 
 const getStatusColor = (status: string) => {
@@ -55,27 +102,19 @@ export function CertificateCard({
   const [showHashes, setShowHashes] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
   
-  // This function now processes the structured AI analysis object
-  const getFraudInfo = (analysis: AiAnalysisResult | string | null) => {
-    // Backwards compatibility for old string-based analysis
-    if (!analysis || typeof analysis === 'string') {
-      const score = certificate.fraudScore;
-      if (score === null || score === undefined) return null;
-      const reasoning = analysis ? [analysis] : ["Legacy analysis format."];
-      if (score < 40) return { label: `Score: ${score}`, className: "bg-green-100 text-green-800", isSuspicious: false, reasoning };
-      if (score < 60) return { label: `Score: ${score}`, className: "bg-yellow-100 text-yellow-800", isSuspicious: true, reasoning };
-      return { label: `Score: ${score}`, className: "bg-red-100 text-red-800", isSuspicious: true, reasoning };
-    }
-
+  // Parse the AI analysis using the safe parser
+  const parsedAnalysis = parseAiAnalysis(certificate.aiAnalysis, certificate.fraudScore);
+  const isForensicFormat = !!(parsedAnalysis?.checks);
+  
+  const getFraudDisplay = (analysis: AiAnalysisResult | null) => {
+    if (!analysis) return null;
     const score = analysis.score;
-    if (score === null || score === undefined) return null;
     if (score < 40) return { label: `Score: ${score}`, className: "bg-green-100 text-green-800", ...analysis };
     if (score < 60) return { label: `Score: ${score}`, className: "bg-yellow-100 text-yellow-800", ...analysis };
     return { label: `Score: ${score}`, className: "bg-red-100 text-red-800", ...analysis };
   };
 
-  // The `as any` is a temporary bridge while the backend schema is updated
-  const fraudInfo = getFraudInfo(certificate.aiAnalysis as any);
+  const fraudInfo = getFraudDisplay(parsedAnalysis);
   
   return (
     <Card className="certificate-card">
@@ -119,7 +158,9 @@ export function CertificateCard({
           }`}>
             <div className="flex justify-between items-center">
               <p className="text-sm font-medium text-muted-foreground">
-                {fraudInfo.isSuspicious ? '⚠️ AI Analysis Flags:' : 'AI Analysis Summary:'}
+                {isForensicFormat
+                  ? (fraudInfo.isSuspicious ? '⚠️ AI Forensic Summary' : '🔍 AI Forensic Summary')
+                  : (fraudInfo.isSuspicious ? '⚠️ AI Analysis Flags:' : 'AI Analysis Summary:')}
               </p>
               <Button
                 variant="ghost"
@@ -128,17 +169,55 @@ export function CertificateCard({
                 onClick={() => setShowAnalysis(!showAnalysis)}
               >
                 <ListChecks className="h-3 w-3 mr-1" />
-                {showAnalysis ? "Hide" : "Show"} Details
+                {showAnalysis ? "Hide Details" : "Show Details"}
               </Button>
             </div>
             {showAnalysis && (
-              <ul className="mt-2 text-sm list-disc list-inside space-y-1" data-testid={`certificate-ai-analysis-${certificate.id}`}>
-                {fraudInfo.reasoning.map((reason, index) => (
-                  <li key={index} className={fraudInfo.isSuspicious ? 'text-red-800' : 'text-foreground'}>
-                    {reason}
-                  </li>
-                ))}
-              </ul>
+              <div className="mt-2" data-testid={`certificate-ai-analysis-${certificate.id}`}>
+                <ul className="text-sm list-disc list-inside space-y-1">
+                  {fraudInfo.reasoning.map((reason, index) => (
+                    <li key={index} className={fraudInfo.isSuspicious ? 'text-red-800' : 'text-foreground'}>
+                      {reason}
+                    </li>
+                  ))}
+                </ul>
+                {isForensicFormat && fraudInfo.checks && (
+                  <div className="mt-3 pt-2 border-t border-border space-y-2">
+                    {fraudInfo.checks.metadata && fraudInfo.checks.metadata.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Metadata</p>
+                        <ul className="text-xs list-disc list-inside space-y-0.5 text-foreground">
+                          {fraudInfo.checks.metadata.map((m, i) => <li key={i}>{m}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {fraudInfo.checks.ocr && fraudInfo.checks.ocr.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">OCR</p>
+                        <ul className="text-xs list-disc list-inside space-y-0.5 text-foreground">
+                          {fraudInfo.checks.ocr.map((m, i) => <li key={i}>{m}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {fraudInfo.checks.qr && fraudInfo.checks.qr.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">QR Code</p>
+                        <ul className="text-xs list-disc list-inside space-y-0.5 text-foreground">
+                          {fraudInfo.checks.qr.map((m, i) => <li key={i}>{m}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {fraudInfo.checks.duplicate && fraudInfo.checks.duplicate.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Duplicate Check</p>
+                        <ul className="text-xs list-disc list-inside space-y-0.5 text-foreground">
+                          {fraudInfo.checks.duplicate.map((m, i) => <li key={i}>{m}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}
