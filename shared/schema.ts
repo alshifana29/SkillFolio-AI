@@ -34,6 +34,10 @@ export const certificates = pgTable("certificates", {
   fraudScore: integer("fraud_score"),
   blockchainHash: text("blockchain_hash"),
   qrCode: text("qr_code"),
+  fileHash: text("file_hash"),
+  contentHash: text("content_hash"),
+  imageHash: text("image_hash"),
+  ocrText: text("ocr_text"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -132,6 +136,16 @@ export const contactRequests = pgTable("contact_requests", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const verifiedCertificateRegistry = pgTable("verified_certificate_registry", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  certificateId: varchar("certificate_id", { length: 36 }).notNull().references(() => certificates.id),
+  contentHash: text("content_hash").notNull(),
+  imageHash: text("image_hash"),
+  fileHash: text("file_hash"),
+  approvedBy: varchar("approved_by", { length: 36 }).references(() => users.id),
+  approvedAt: timestamp("approved_at").defaultNow().notNull(),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
@@ -154,6 +168,10 @@ export const insertCertificateSchema = createInsertSchema(certificates).omit({
   fraudScore: true,
   blockchainHash: true,
   qrCode: true,
+  fileHash: true,
+  contentHash: true,
+  imageHash: true,
+  ocrText: true,
   createdAt: true,
   updatedAt: true,
 }).extend({
@@ -202,3 +220,4 @@ export type InsertProject = z.infer<typeof insertProjectSchema>;
 export type RecruiterShortlist = typeof recruiterShortlist.$inferSelect;
 export type RecruiterNote = typeof recruiterNotes.$inferSelect;
 export type ContactRequest = typeof contactRequests.$inferSelect;
+export type VerifiedCertificateRegistry = typeof verifiedCertificateRegistry.$inferSelect;

@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import type { Certificate, ForgeryReport } from "@shared/schema";
 import { exec } from "child_process";
 import util from "util";
+import { PDFParse } from "pdf-parse";
 
 const execAsync = util.promisify(exec);
 
@@ -12,6 +13,7 @@ export interface ForgeryAnalysisResult {
   fraudScore: number;
   riskLevel: "low" | "medium" | "high";
   anomalyScore: number;
+  anomalyType: "new" | "exact_duplicate" | "visual_edit" | "ocr_tamper" | "unknown";
   elaScore: number;
   noiseScore: number;
   templateScore: number;
@@ -27,6 +29,7 @@ export interface ForgeryAnalysisResult {
     modifiedAt?: string;
     software?: string;
     ocrEngine?: string;
+    fileHash?: string;
     imageHash?: string;
     textHash?: string;
     contentHash?: string;
@@ -48,6 +51,7 @@ type TemplateMatchResult = {
 };
 
 type HashMetadata = {
+  fileHash?: string;
   imageHash?: string;
   textHash?: string;
   contentHash?: string;
@@ -97,6 +101,7 @@ export class ForgeryDetector {
       fraudScore: 0,
       riskLevel: "low",
       anomalyScore: 0,
+      anomalyType: "new",
       elaScore: 0,
       noiseScore: 0,
       templateScore: 100,
@@ -170,41 +175,37 @@ export class ForgeryDetector {
     }
 
     const normalizedText = this.normalizeText(analysisResults.extractedText);
+    const fileHash = fileBuffer ? this.generateFileHash(fileBuffer) : "";
     const imageHash = fileBuffer ? this.generateImageHash(fileBuffer) : "";
     const textHash = normalizedText ? this.generateTextHash(normalizedText) : "";
     const contentHash = this.generateContentHash(certificate, imageHash, textHash);
 
+    if (fileHash) analysisResults.metadata.fileHash = fileHash;
     if (imageHash) analysisResults.metadata.imageHash = imageHash;
     if (textHash) analysisResults.metadata.textHash = textHash;
     if (contentHash) analysisResults.metadata.contentHash = contentHash;
 
-    if (imageHash || textHash) {
-      const templateMatch = await this.compareAgainstHistory(
+    // Hash-based anomaly detection (4 cases)
+    if (fileHash || imageHash || textHash) {
+      const anomaly = await this.detectAnomalies(
         certificate,
-        normalizedText,
+        fileHash,
         imageHash,
-        contentHash
+        textHash,
+        contentHash,
+        normalizedText
       );
 
-      analysisResults.templateScore = templateMatch.templateScore;
-      analysisResults.metadata.templateReferenceId = templateMatch.bestMatchCertificateId || undefined;
-      analysisResults.metadata.textSimilarity = templateMatch.textSimilarity;
-      analysisResults.metadata.imageSimilarity = templateMatch.imageSimilarity;
-      analysisResults.metadata.templateSimilarity = templateMatch.combinedSimilarity;
+      analysisResults.anomalyType = anomaly.anomalyType;
+      analysisResults.templateScore = anomaly.templateScore;
+      analysisResults.metadata.templateReferenceId = anomaly.bestMatchCertificateId || undefined;
+      analysisResults.metadata.textSimilarity = anomaly.textSimilarity;
+      analysisResults.metadata.imageSimilarity = anomaly.imageSimilarity;
+      analysisResults.metadata.templateSimilarity = anomaly.combinedSimilarity;
 
-      if (templateMatch.exactContentDuplicate) {
-        analysisResults.fraudScore += 35;
-        reasoningParts.push("Exact content-hash duplicate detected against an existing certificate");
-      } else if (templateMatch.nearDuplicate) {
-        analysisResults.fraudScore += 20;
-        reasoningParts.push("Near-duplicate detected from OCR text + image hash similarity");
-      }
-
-      if (templateMatch.templateScore < 35) {
-        analysisResults.fraudScore += 10;
-        reasoningParts.push("Template mismatch: uploaded certificate strongly differs from known template patterns");
-      } else if (templateMatch.templateScore >= 70) {
-        reasoningParts.push("Template match: certificate structure aligns with historical records");
+      analysisResults.fraudScore += anomaly.fraudScoreContribution;
+      if (anomaly.reasonings.length > 0) {
+        reasoningParts.push(...anomaly.reasonings);
       }
     }
 
@@ -259,40 +260,63 @@ export class ForgeryDetector {
     ]);
 
     if (mimeType && !supportedMimeTypes.has(mimeType)) {
-      console.warn(`[OCR] Unsupported MIME type for Tesseract: ${mimeType}`);
+      console.warn(`[OCR] Unsupported MIME type: ${mimeType}`);
       return "";
     }
 
-    try {
-      console.log(`[OCR] Starting extraction for file: ${filePath}`);
-      const modes = [6, 11, 4, 3];
-      for (const psm of modes) {
-        const { stdout, stderr } = await execAsync(
-          `tesseract "${filePath}" stdout -l eng --psm ${psm}`
-        );
-
-        if (stderr) {
-          console.log(`[OCR] Tesseract info (psm ${psm}): ${stderr.split("\n")[0]}`);
+    // For PDFs, use pdf-parse library (no external dependencies needed)
+    if (mimeType === "application/pdf") {
+      try {
+        console.log(`[OCR] Extracting text from PDF using pdf-parse: ${filePath}`);
+        const dataBuffer = fs.readFileSync(filePath);
+        const parser = new PDFParse({ data: dataBuffer });
+        const result = await parser.getText();
+        await parser.destroy();
+        const text = result.text?.trim() || "";
+        if (text.length > 0) {
+          console.log(`[OCR] PDF text extraction success. Text length: ${text.length} chars`);
+          console.log(`[OCR Preview]: ${text.substring(0, 120).replace(/\n/g, " ")}...`);
+          return text;
         }
-
-        const clean = stdout.trim();
-        if (clean.length > 0) {
-          console.log(`[OCR] Extraction success with psm ${psm}. Text length: ${clean.length} chars`);
-          console.log(`[OCR Preview]: ${clean.substring(0, 120).replace(/\n/g, " ")}...`);
-          return clean;
-        }
+        // If pdf-parse returns empty, fall through to buffer fallback
+        console.log("[OCR] pdf-parse returned empty text, trying buffer fallback...");
+      } catch (error: any) {
+        console.error("[OCR] pdf-parse failed:", error.message);
       }
-
-      console.warn("[OCR] Warning: Extracted text is empty after trying multiple PSM modes.");
-      return "";
-    } catch (error: any) {
-      console.error("System OCR extraction failed:", error.message);
-      if (error.stderr) console.error(`[OCR] Error details: ${error.stderr}`);
-      return "";
     }
+
+    // For images, try Tesseract if available
+    if (mimeType && mimeType.startsWith("image/")) {
+      try {
+        console.log(`[OCR] Starting Tesseract extraction for image: ${filePath}`);
+        const modes = [6, 11, 4, 3];
+        for (const psm of modes) {
+          const { stdout, stderr } = await execAsync(
+            `tesseract "${filePath}" stdout -l eng --psm ${psm}`
+          );
+
+          if (stderr) {
+            console.log(`[OCR] Tesseract info (psm ${psm}): ${stderr.split("\n")[0]}`);
+          }
+
+          const clean = stdout.trim();
+          if (clean.length > 0) {
+            console.log(`[OCR] Extraction success with psm ${psm}. Text length: ${clean.length} chars`);
+            console.log(`[OCR Preview]: ${clean.substring(0, 120).replace(/\n/g, " ")}...`);
+            return clean;
+          }
+        }
+      } catch (error: any) {
+        console.warn("[OCR] Tesseract not available or failed:", error.message);
+      }
+    }
+
+    console.warn("[OCR] No text could be extracted from file.");
+    return "";
   }
 
   private extractTextFromPdfBuffer(buffer: Buffer): string {
+    // Synchronous fallback: extract text streams from raw PDF bytes
     const raw = buffer.toString("latin1");
     const regex = /\(([^)]{4,})\)/g;
     const chunks: string[] = [];
@@ -331,6 +355,13 @@ export class ForgeryDetector {
     return crypto.createHash("sha256").update(normalizedText).digest("hex");
   }
 
+  // 1️⃣ File Hash — SHA256 of the raw file bytes (detects exact duplicates & file tampering)
+  private generateFileHash(buffer: Buffer): string {
+    return crypto.createHash("sha256").update(buffer).digest("hex");
+  }
+
+  // 2️⃣ Image Perceptual Hash (dHash) — detects visual modifications
+  // Divides file into segments, computes relative differences (difference hash)
   private generateImageHash(buffer: Buffer): string {
     const bins = 64;
     const segmentSize = Math.max(1, Math.floor(buffer.length / bins));
@@ -393,6 +424,7 @@ export class ForgeryDetector {
     if (!metadata || typeof metadata !== "object") return {};
     const candidate = metadata as Record<string, unknown>;
     return {
+      fileHash: typeof candidate.fileHash === "string" ? candidate.fileHash : undefined,
       imageHash: typeof candidate.imageHash === "string" ? candidate.imageHash : undefined,
       textHash: typeof candidate.textHash === "string" ? candidate.textHash : undefined,
       contentHash: typeof candidate.contentHash === "string" ? candidate.contentHash : undefined,
@@ -481,6 +513,191 @@ export class ForgeryDetector {
       exactContentDuplicate,
       nearDuplicate,
     };
+  }
+
+  /**
+   * Hash-based anomaly detection implementing 4 cases:
+   * Case 1 — Same fileHash → Exact Duplicate → Reject
+   * Case 2 — Same contentHash (OCR), different imageHash → Visual editing detected
+   * Case 3 — Same imageHash, different contentHash → OCR mismatch / tampering
+   * Case 4 — No matches → New certificate → Faculty review
+   * 
+   * Forgery Score = image hash distance + content similarity mismatch
+   */
+  private async detectAnomalies(
+    certificate: Certificate,
+    fileHash: string,
+    imageHash: string,
+    textHash: string,
+    contentHash: string,
+    normalizedText: string
+  ): Promise<{
+    anomalyType: "new" | "exact_duplicate" | "visual_edit" | "ocr_tamper" | "unknown";
+    fraudScoreContribution: number;
+    templateScore: number;
+    bestMatchCertificateId: string | null;
+    textSimilarity: number;
+    imageSimilarity: number;
+    combinedSimilarity: number;
+    reasonings: string[];
+  }> {
+    const result = {
+      anomalyType: "new" as "new" | "exact_duplicate" | "visual_edit" | "ocr_tamper" | "unknown",
+      fraudScoreContribution: 0,
+      templateScore: 100,
+      bestMatchCertificateId: null as string | null,
+      textSimilarity: 0,
+      imageSimilarity: 0,
+      combinedSimilarity: 0,
+      reasonings: [] as string[],
+    };
+
+    // Check against existing certificates (file hash exact match)
+    if (fileHash) {
+      const existingCerts = await storage.getAllCertificates();
+      for (const existing of existingCerts) {
+        if (existing.id === certificate.id) continue;
+        if (existing.fileHash === fileHash) {
+          result.anomalyType = "exact_duplicate";
+          result.fraudScoreContribution = 50;
+          result.bestMatchCertificateId = existing.id;
+          result.reasonings.push(
+            `Case 1 — Exact Duplicate: File hash matches existing certificate "${existing.title}" (same file uploaded before)`
+          );
+          return result;
+        }
+      }
+    }
+
+    // Check against verified registry first (approved certificates)
+    const verifiedRegistry = await storage.getVerifiedRegistry();
+    for (const entry of verifiedRegistry) {
+      if (entry.certificateId === certificate.id) continue;
+
+      // Case 1: Same file hash in verified registry
+      if (fileHash && entry.fileHash === fileHash) {
+        result.anomalyType = "exact_duplicate";
+        result.fraudScoreContribution = 50;
+        result.bestMatchCertificateId = entry.certificateId;
+        result.reasonings.push(
+          "Case 1 — Exact Duplicate: File matches a previously verified certificate"
+        );
+        return result;
+      }
+
+      // Case 2: Same content hash, different image hash → Visual editing
+      if (textHash && entry.contentHash) {
+        const contentMatch = textHash === entry.contentHash ||
+          (contentHash && contentHash === entry.contentHash);
+        const imagesDiffer = imageHash && entry.imageHash && imageHash !== entry.imageHash;
+        if (contentMatch && imagesDiffer) {
+          const distance = this.hammingDistanceHex(imageHash, entry.imageHash!);
+          result.anomalyType = "visual_edit";
+          result.fraudScoreContribution = distance > 10 ? 35 : 20;
+          result.bestMatchCertificateId = entry.certificateId;
+          result.reasonings.push(
+            `Case 2 — Visual Editing Detected: OCR content matches verified certificate but image differs (Hamming distance: ${distance}). Possible logo/design modification.`
+          );
+          return result;
+        }
+      }
+
+      // Case 3: Same image hash, different content hash → OCR tampering
+      if (imageHash && entry.imageHash === imageHash) {
+        const contentDiffers = textHash && entry.contentHash && textHash !== entry.contentHash;
+        if (contentDiffers) {
+          result.anomalyType = "ocr_tamper";
+          result.fraudScoreContribution = 40;
+          result.bestMatchCertificateId = entry.certificateId;
+          result.reasonings.push(
+            "Case 3 — OCR Mismatch/Tampering: Image hash matches verified certificate but extracted text differs. Possible text overlay manipulation."
+          );
+          return result;
+        }
+      }
+    }
+
+    // Also compare against all forgery reports in the history
+    const reports = await storage.getRecentForgeryReports(500);
+    const allCerts = await storage.getAllCertificates();
+    const certMap = new Map(allCerts.map((c) => [c.id, c]));
+    const currentTokens = this.tokenize(normalizedText);
+
+    let bestScore = 0;
+    let bestTextScore = 0;
+    let bestImageScore = 0;
+    let bestId: string | null = null;
+
+    for (const report of reports) {
+      if (report.certificateId === certificate.id) continue;
+      const historicHashes = this.extractHashes(report.metadata);
+      const historicCert = certMap.get(report.certificateId);
+
+      // Case 2: Same text hash, different image
+      if (textHash && historicHashes.textHash === textHash && imageHash && historicHashes.imageHash && imageHash !== historicHashes.imageHash) {
+        const distance = this.hammingDistanceHex(imageHash, historicHashes.imageHash);
+        if (distance > 5) {
+          result.anomalyType = "visual_edit";
+          result.fraudScoreContribution = distance > 10 ? 30 : 15;
+          result.bestMatchCertificateId = report.certificateId;
+          result.reasonings.push(
+            `Case 2 — Possible Visual Editing: Same OCR text content as "${historicCert?.title || "another certificate"}" but image differs (Hamming distance: ${distance})`
+          );
+        }
+      }
+
+      // Case 3: Same image hash, different text
+      if (imageHash && historicHashes.imageHash === imageHash && textHash && historicHashes.textHash && textHash !== historicHashes.textHash) {
+        result.anomalyType = "ocr_tamper";
+        result.fraudScoreContribution = 35;
+        result.bestMatchCertificateId = report.certificateId;
+        result.reasonings.push(
+          `Case 3 — OCR Mismatch: Same image as "${historicCert?.title || "another certificate"}" but OCR text content differs`
+        );
+      }
+
+      // General similarity scoring
+      const historicText = this.normalizeText(report.extractedText || "");
+      const historicTokens = this.tokenize(historicText);
+      const textSimilarity = currentTokens.size > 0 && historicTokens.size > 0
+        ? this.jaccardSimilarity(currentTokens, historicTokens)
+        : 0;
+
+      let imageSimilarity = 0;
+      if (imageHash && historicHashes.imageHash && imageHash.length === historicHashes.imageHash.length) {
+        const distance = this.hammingDistanceHex(imageHash, historicHashes.imageHash);
+        const maxDistance = imageHash.length * 4;
+        imageSimilarity = maxDistance > 0 ? Math.max(0, 1 - (distance / maxDistance)) : 0;
+      }
+
+      const combined = (0.55 * textSimilarity) + (0.45 * imageSimilarity);
+      if (combined > bestScore) {
+        bestScore = combined;
+        bestTextScore = textSimilarity;
+        bestImageScore = imageSimilarity;
+        bestId = report.certificateId;
+      }
+    }
+
+    result.templateScore = Math.round(bestScore * 100);
+    result.textSimilarity = Math.round(bestTextScore * 100) / 100;
+    result.imageSimilarity = Math.round(bestImageScore * 100) / 100;
+    result.combinedSimilarity = Math.round(bestScore * 100) / 100;
+    result.bestMatchCertificateId = bestId;
+
+    // If anomalyType not yet set but high similarity found
+    if (result.anomalyType === "new" && bestScore >= 0.92) {
+      result.anomalyType = "unknown";
+      result.fraudScoreContribution += 20;
+      result.reasonings.push("Near-duplicate detected from combined text + image hash similarity");
+    }
+
+    // Case 4 — New certificate
+    if (result.anomalyType === "new") {
+      result.reasonings.push("Case 4 — New Certificate: No matching hashes found in database. Sent for faculty verification.");
+    }
+
+    return result;
   }
 
   private checkNameMismatch(text: string, user: any): { score: number; issues: string[] } {

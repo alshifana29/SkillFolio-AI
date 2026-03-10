@@ -84,6 +84,7 @@ const authenticateToken = async (req: AuthRequest, res: Response, next: NextFunc
 const requireRole = (...roles: string[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user || !roles.includes(req.user.role)) {
+      console.log(`[requireRole] DENIED: user role="${req.user?.role}" required=${JSON.stringify(roles)} userId=${req.user?.id}`);
       return res.status(403).json({ error: "Insufficient permissions" });
     }
     next();
@@ -243,6 +244,10 @@ export async function registerRoutes(
         const updatedCertificate = await storage.updateCertificate(certificate.id, {
           aiAnalysis: analysis.reasoning,
           fraudScore: analysis.fraudScore,
+          fileHash: analysis.metadata.fileHash || null,
+          contentHash: analysis.metadata.contentHash || null,
+          imageHash: analysis.metadata.imageHash || null,
+          ocrText: analysis.extractedText || null,
         });
         if (updatedCertificate) {
           responseCertificate = updatedCertificate;
@@ -356,6 +361,17 @@ export async function registerRoutes(
 
       await storage.logActivity(req.user!.id, "certificate_approved", "certificate", certificate.id);
 
+      // Add to verified certificate registry (rehashing after approval)
+      if (certificate.contentHash || certificate.imageHash || certificate.fileHash) {
+        await storage.addToVerifiedRegistry({
+          certificateId: certificate.id,
+          contentHash: certificate.contentHash || "",
+          imageHash: certificate.imageHash || undefined,
+          fileHash: certificate.fileHash || undefined,
+          approvedBy: req.user!.id,
+        });
+      }
+
       await storage.createNotification({
         userId: certificate.userId,
         type: "certificate_approved",
@@ -434,6 +450,18 @@ export async function registerRoutes(
         );
 
         await storage.logActivity(req.user!.id, "certificate_approved", "certificate", certificate.id);
+
+        // Add to verified certificate registry (rehashing after approval)
+        if (certificate.contentHash || certificate.imageHash || certificate.fileHash) {
+          await storage.addToVerifiedRegistry({
+            certificateId: certificate.id,
+            contentHash: certificate.contentHash || "",
+            imageHash: certificate.imageHash || undefined,
+            fileHash: certificate.fileHash || undefined,
+            approvedBy: req.user!.id,
+          });
+        }
+
         await storage.createNotification({
           userId: certificate.userId,
           type: "certificate_approved",
@@ -511,6 +539,43 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Get analysis error:", error);
       res.status(500).json({ error: "Failed to get analysis" });
+    }
+  });
+
+  // Hash verification endpoint - shows all 3 hashes for a certificate
+  app.get("/api/certificates/:id/hashes", authenticateToken, async (req: AuthRequest, res: Response) => {
+    try {
+      const certificate = await storage.getCertificateById(req.params.id);
+      if (!certificate) {
+        return res.status(404).json({ error: "Certificate not found" });
+      }
+
+      if (req.user!.role === "student" && certificate.userId !== req.user!.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const forgeryReport = await storage.getForgeryReportByCertificateId(certificate.id);
+      const metadata = forgeryReport?.metadata as Record<string, unknown> | null;
+
+      res.json({
+        certificateId: certificate.id,
+        title: certificate.title,
+        hashes: {
+          fileHash: certificate.fileHash || metadata?.fileHash || null,
+          contentHash: certificate.contentHash || metadata?.contentHash || null,
+          imageHash: certificate.imageHash || metadata?.imageHash || null,
+          textHash: metadata?.textHash || null,
+        },
+        anomalyDetection: {
+          fraudScore: certificate.fraudScore,
+          authenticity: forgeryReport?.authenticity || "pending",
+          reasoning: forgeryReport?.reasoning || "Analysis pending",
+        },
+        status: certificate.status,
+      });
+    } catch (error) {
+      console.error("Get certificate hashes error:", error);
+      res.status(500).json({ error: "Failed to get certificate hashes" });
     }
   });
 
@@ -702,6 +767,174 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Get activity error:", error);
       res.status(500).json({ error: "Failed to get activity" });
+    }
+  });
+
+  // Student Analytics endpoint - provides rich analytics data for the student dashboard
+  app.get("/api/student/analytics", authenticateToken, requireRole("student"), async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+
+      const [certificates, portfolioViewsList, activity, notifications, projects, contactReqs] = await Promise.all([
+        storage.getCertificatesByUserId(userId),
+        storage.getPortfolioViews(userId),
+        storage.getActivityByUserId(userId),
+        storage.getNotificationsByUserId(userId),
+        storage.getProjectsByUserId(userId),
+        storage.getContactRequestsForStudent(userId),
+      ]);
+
+      const totalCertificates = certificates.length;
+      const verifiedCertificates = certificates.filter(c => c.status === "approved").length;
+      const pendingCertificates = certificates.filter(c => c.status === "pending").length;
+      const rejectedCertificates = certificates.filter(c => c.status === "rejected").length;
+      const totalViews = portfolioViewsList.length;
+
+      // View trends - last 30 days grouped by date
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const viewTrends: Record<string, number> = {};
+      for (let i = 0; i < 30; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() - (29 - i));
+        viewTrends[d.toISOString().split("T")[0]] = 0;
+      }
+      for (const view of portfolioViewsList) {
+        const dateKey = new Date(view.createdAt).toISOString().split("T")[0];
+        if (viewTrends[dateKey] !== undefined) {
+          viewTrends[dateKey]++;
+        }
+      }
+
+      // Skill distribution by certificate type
+      const skillDistribution = {
+        course: certificates.filter(c => c.certificateType === "course").length,
+        hackathon: certificates.filter(c => c.certificateType === "hackathon").length,
+        internship: certificates.filter(c => c.certificateType === "internship").length,
+        workshop: certificates.filter(c => c.certificateType === "workshop").length,
+      };
+
+      // Verification rate
+      const verificationRate = totalCertificates > 0
+        ? Math.round((verifiedCertificates / totalCertificates) * 100)
+        : 0;
+
+      // Recent activity timeline
+      const recentActivity = activity.slice(0, 10).map(a => ({
+        id: a.id,
+        action: a.action,
+        resourceType: a.resourceType,
+        createdAt: a.createdAt,
+      }));
+
+      // Profile completeness score
+      const user = await storage.getUserById(userId);
+      let profileScore = 0;
+      if (user?.firstName) profileScore += 15;
+      if (user?.lastName) profileScore += 15;
+      if (verifiedCertificates > 0) profileScore += 20;
+      if (projects.length > 0) profileScore += 20;
+      if (certificates.some(c => c.certificateType === "internship" && c.status === "approved")) profileScore += 15;
+      if (totalViews > 0) profileScore += 15;
+
+      // Recruiter interest metrics
+      const pendingContactRequests = contactReqs.filter(cr => cr.status === "pending").length;
+      const acceptedContactRequests = contactReqs.filter(cr => cr.status === "accepted").length;
+      const totalContactRequests = contactReqs.length;
+
+      // Unread notifications
+      const unreadNotifications = notifications.filter(n => !n.isRead).length;
+
+      // Skills extracted from certificate titles
+      const skills = certificates
+        .filter(c => c.status === "approved")
+        .map(c => c.title);
+
+      // AI analysis insights
+      const avgFraudScore = certificates.length > 0
+        ? Math.round(certificates.reduce((sum, c) => sum + (c.fraudScore || 0), 0) / certificates.length)
+        : 0;
+
+      res.json({
+        overview: {
+          totalCertificates,
+          verifiedCertificates,
+          pendingCertificates,
+          rejectedCertificates,
+          totalViews,
+          totalProjects: projects.length,
+          verificationRate,
+          profileScore,
+          avgFraudScore,
+        },
+        viewTrends: Object.entries(viewTrends).map(([date, count]) => ({ date, views: count })),
+        skillDistribution,
+        recentActivity,
+        recruiterInterest: {
+          totalContactRequests,
+          pendingContactRequests,
+          acceptedContactRequests,
+        },
+        notifications: {
+          total: notifications.length,
+          unread: unreadNotifications,
+        },
+        skills,
+      });
+    } catch (error) {
+      console.error("Get student analytics error:", error);
+      res.status(500).json({ error: "Failed to get analytics" });
+    }
+  });
+
+  // Student contact requests - view and respond
+  app.get("/api/student/contact-requests", authenticateToken, requireRole("student"), async (req: AuthRequest, res: Response) => {
+    try {
+      const requests = await storage.getContactRequestsForStudent(req.user!.id);
+      // Enrich with recruiter name
+      const enriched = await Promise.all(requests.map(async (cr) => {
+        const recruiter = await storage.getUserById(cr.recruiterId);
+        return {
+          ...cr,
+          recruiterName: recruiter ? `${recruiter.firstName} ${recruiter.lastName}` : "Unknown Recruiter",
+          recruiterEmail: recruiter?.email,
+        };
+      }));
+      res.json(enriched);
+    } catch (error) {
+      console.error("Get student contact requests error:", error);
+      res.status(500).json({ error: "Failed to get contact requests" });
+    }
+  });
+
+  app.patch("/api/student/contact-requests/:requestId", authenticateToken, requireRole("student"), async (req: AuthRequest, res: Response) => {
+    try {
+      const { status } = req.body;
+      if (!["accepted", "rejected"].includes(status)) {
+        return res.status(400).json({ error: "Status must be 'accepted' or 'rejected'" });
+      }
+      const updated = await storage.updateContactRequestStatus(req.params.requestId, status);
+      if (!updated) {
+        return res.status(404).json({ error: "Contact request not found" });
+      }
+
+      // Notify the recruiter
+      const recruiter = await storage.getUserById(updated.recruiterId);
+      if (recruiter) {
+        await storage.createNotification({
+          userId: updated.recruiterId,
+          type: "contact_request_" + status,
+          title: `Contact Request ${status === "accepted" ? "Accepted" : "Declined"}`,
+          message: `Your contact request has been ${status} by ${req.user!.email}.`,
+          data: { contactRequestId: updated.id },
+        });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Update contact request error:", error);
+      res.status(500).json({ error: "Failed to update contact request" });
     }
   });
 

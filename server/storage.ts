@@ -12,6 +12,7 @@ import {
   recruiterShortlist,
   recruiterNotes,
   contactRequests,
+  verifiedCertificateRegistry,
   type User,
   type InsertUser,
   type Certificate,
@@ -27,6 +28,7 @@ import {
   type RecruiterShortlist,
   type RecruiterNote,
   type ContactRequest,
+  type VerifiedCertificateRegistry,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -101,6 +103,10 @@ export interface IStorage {
   getContactRequestsForStudent(studentId: string): Promise<ContactRequest[]>;
   getContactRequestsByRecruiter(recruiterId: string): Promise<ContactRequest[]>;
   updateContactRequestStatus(id: string, status: string): Promise<ContactRequest | null>;
+
+  // Verified certificate registry
+  addToVerifiedRegistry(entry: { certificateId: string; contentHash: string; imageHash?: string; fileHash?: string; approvedBy?: string }): Promise<VerifiedCertificateRegistry>;
+  getVerifiedRegistry(): Promise<VerifiedCertificateRegistry[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -465,6 +471,16 @@ export class DatabaseStorage implements IStorage {
       .where(eq(contactRequests.id, id))
       .returning();
     return entry || null;
+  }
+
+  // Verified certificate registry
+  async addToVerifiedRegistry(entry: { certificateId: string; contentHash: string; imageHash?: string; fileHash?: string; approvedBy?: string }): Promise<VerifiedCertificateRegistry> {
+    const [record] = await db.insert(verifiedCertificateRegistry).values(entry).returning();
+    return record;
+  }
+
+  async getVerifiedRegistry(): Promise<VerifiedCertificateRegistry[]> {
+    return db.select().from(verifiedCertificateRegistry);
   }
 }
 
