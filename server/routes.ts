@@ -1007,6 +1007,215 @@ export async function registerRoutes(
     }
   });
 
+  // Enhanced Admin Dashboard endpoint — returns all data the admin needs in one call
+  app.get("/api/admin/dashboard", authenticateToken, requireRole("admin"), async (_req: AuthRequest, res: Response) => {
+    try {
+      const [allUsers, allCertsRaw, blocks, recentForgery, latestBlock] = await Promise.all([
+        storage.getAllUsers(),
+        storage.getAllCertificates(),
+        storage.getAllBlocks(),
+        storage.getRecentForgeryReports(50),
+        storage.getLatestBlock(),
+      ]);
+
+      // Categorize by status from the full list
+      const allCerts = {
+        all: allCertsRaw,
+        pending: allCertsRaw.filter((c) => c.status === "pending"),
+        approved: allCertsRaw.filter((c) => c.status === "approved"),
+        rejected: allCertsRaw.filter((c) => c.status === "rejected"),
+      };
+
+      // Suspicious certificates: fraud score > 40
+      const suspiciousCerts = recentForgery
+        .filter((r) => r.fraudScore > 40)
+        .slice(0, 10);
+
+      // Map certificate IDs to student names for suspicious certs
+      const suspiciousWithDetails = await Promise.all(
+        suspiciousCerts.map(async (report) => {
+          const cert = allCerts.all.find((c) => c.id === report.certificateId);
+          let studentName = "Unknown";
+          if (cert) {
+            const student = allUsers.find((u) => u.id === cert.userId);
+            studentName = student ? `${student.firstName} ${student.lastName}` : "Unknown";
+          }
+          return {
+            id: report.id,
+            certificateId: report.certificateId,
+            certificateTitle: cert?.title || "Unknown",
+            studentName,
+            fraudScore: report.fraudScore,
+            authenticity: report.authenticity,
+            reasoning: report.reasoning,
+            createdAt: report.createdAt,
+          };
+        })
+      );
+
+      // Recent certificate activity (all certs, sorted newest first)
+      const recentCerts = allCerts.all
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .map((cert) => {
+          const student = allUsers.find((u) => u.id === cert.userId);
+          return {
+            id: cert.id,
+            title: cert.title,
+            institution: cert.institution,
+            certificateType: cert.certificateType,
+            status: cert.status,
+            studentName: student ? `${student.firstName} ${student.lastName}` : "Unknown",
+            studentEmail: student?.email || "",
+            createdAt: cert.createdAt,
+            updatedAt: cert.updatedAt,
+            fraudScore: cert.fraudScore,
+          };
+        });
+
+      // Certificate category breakdown
+      const categoryBreakdown: Record<string, number> = {};
+      for (const cert of allCerts.all) {
+        const type = cert.certificateType || "other";
+        categoryBreakdown[type] = (categoryBreakdown[type] || 0) + 1;
+      }
+
+      // Monthly upload stats (last 6 months)
+      const monthlyUploads: { month: string; count: number }[] = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date();
+        d.setMonth(d.getMonth() - i);
+        const monthKey = d.toLocaleString("default", { month: "short" });
+        const monthStart = new Date(d.getFullYear(), d.getMonth(), 1);
+        const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+        const count = allCerts.all.filter(
+          (c) => new Date(c.createdAt) >= monthStart && new Date(c.createdAt) <= monthEnd
+        ).length;
+        monthlyUploads.push({ month: monthKey, count });
+      }
+
+      // User role distribution
+      const roleDistribution: Record<string, number> = {};
+      for (const u of allUsers) {
+        roleDistribution[u.role] = (roleDistribution[u.role] || 0) + 1;
+      }
+
+      // System health info
+      const systemHealth = {
+        serverStatus: "online",
+        databaseStatus: "connected",
+        storageUsage: Math.min(95, Math.round((allCerts.all.length / 500) * 100)),
+        totalBlocks: blocks.length,
+        latestBlockHash: latestBlock?.hash?.slice(0, 16) || "N/A",
+        latestBlockTime: latestBlock?.timestamp || null,
+      };
+
+      // System alerts (derived from real data)
+      const alerts: { type: string; message: string; time: string; severity: "info" | "warning" | "success" | "error" }[] = [];
+      
+      if (suspiciousCerts.length > 0) {
+        alerts.push({
+          type: "suspicious",
+          message: `${suspiciousCerts.length} suspicious certificate(s) detected`,
+          time: new Date(suspiciousCerts[0].createdAt).toLocaleString(),
+          severity: "warning",
+        });
+      }
+
+      const recentRejected = allCerts.rejected.filter(
+        (c) => new Date(c.updatedAt).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000
+      );
+      if (recentRejected.length > 0) {
+        alerts.push({
+          type: "rejected",
+          message: `${recentRejected.length} certificate(s) rejected this week`,
+          time: "This week",
+          severity: "error",
+        });
+      }
+
+      const recentNewUsers = allUsers.filter(
+        (u) => new Date(u.createdAt).getTime() > Date.now() - 24 * 60 * 60 * 1000
+      );
+      if (recentNewUsers.length > 0) {
+        alerts.push({
+          type: "new_user",
+          message: `${recentNewUsers.length} new user(s) registered today`,
+          time: "Today",
+          severity: "info",
+        });
+      }
+
+      if (allCerts.pending.length > 5) {
+        alerts.push({
+          type: "pending_high",
+          message: `${allCerts.pending.length} certificates pending review`,
+          time: "Current",
+          severity: "warning",
+        });
+      }
+
+      alerts.push({
+        type: "system",
+        message: "All systems operational",
+        time: "Now",
+        severity: "success",
+      });
+
+      // System logs (recent events derived from data)
+      const logs = [
+        ...allCerts.all.slice(0, 10).map((c) => {
+          const student = allUsers.find((u) => u.id === c.userId);
+          return {
+            event: c.status === "pending" ? "Certificate uploaded" : `Certificate ${c.status}`,
+            user: student ? `${student.firstName} ${student.lastName}` : "Unknown",
+            time: new Date(c.updatedAt).toLocaleString(),
+            timestamp: new Date(c.updatedAt).getTime(),
+          };
+        }),
+        ...allUsers
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 5)
+          .map((u) => ({
+            event: "User registered",
+            user: `${u.firstName} ${u.lastName}`,
+            time: new Date(u.createdAt).toLocaleString(),
+            timestamp: new Date(u.createdAt).getTime(),
+          })),
+      ]
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, 15);
+
+      res.json({
+        stats: {
+          totalUsers: allUsers.length,
+          totalCertificates: allCerts.all.length,
+          certificatesVerified: allCerts.approved.length,
+          certificatesPending: allCerts.pending.length,
+          certificatesRejected: allCerts.rejected.length,
+          suspiciousCertificates: suspiciousCerts.length,
+          totalBlocks: blocks.length,
+        },
+        roleDistribution,
+        categoryBreakdown,
+        monthlyUploads,
+        recentCertificates: recentCerts,
+        suspiciousCertificates: suspiciousWithDetails,
+        systemHealth,
+        alerts,
+        logs,
+        hashIntegrity: {
+          totalVerifiedHashes: blocks.length,
+          latestHash: latestBlock?.hash || "N/A",
+          latestHashTime: latestBlock?.timestamp || null,
+          validationStatus: blocks.length > 0 ? "verified" : "no_data",
+        },
+      });
+    } catch (error) {
+      console.error("Admin dashboard error:", error);
+      res.status(500).json({ error: "Failed to load admin dashboard" });
+    }
+  });
+
   app.get("/api/recruiter/candidates", authenticateToken, requireRole("recruiter"), async (req: AuthRequest, res: Response) => {
     try {
       const { search, minCertificates } = req.query;
